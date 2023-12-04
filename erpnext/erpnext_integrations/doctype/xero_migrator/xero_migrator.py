@@ -17,9 +17,9 @@ def callback(*args, **kwargs):
 	migrator = frappe.get_doc("Xero Migrator")
 	migrator.set_indicator("Connecting to Xero")
 	migrator.code = kwargs.get("code")
-	migrator.xero_company_id = kwargs.get("realmId")
 	migrator.save()
 	migrator.get_tokens()
+	migrator.xero_tenant_id = migrator.get_tenant_id()[0]["tenantId"]
 	frappe.db.commit()
 	migrator.set_indicator("Connected to Xero")
 	# We need this page to automatically close afterwards
@@ -47,78 +47,23 @@ class XeroMigrator(Document):
 			self.authorization_url = self.oauth.authorization_url(self.authorization_endpoint)[0]
 
 	@frappe.whitelist()
-	def clear_access_token(self):
-		frappe.enqueue_doc("Xero Migrator", "Xero Migrator", "_clear_access_token", queue="long")
-		self.set_indicator("Clearing Access Token")
-
-	def _clear_access_token(self):
-		try:
-			frappe.msgprint("test")
-		except Exception as e:
-			self.set_indicator("Failed")
-			self._log_error(e)
-		
-		frappe.db.commit()
-
-	@frappe.whitelist()
-	def migrate(self):
-		frappe.enqueue_doc("Xero Migrator", "Xero Migrator", "_migrate", queue="long")
+	def migrate(self):	
+		self._migrate
 
 	def _migrate(self):
-		try:
-			self.set_indicator("In Progress") # P: set status to In Progress during migration
-			# # Add xero_id field to every document so that we can lookup by Id reference
-			# # provided by documents in API responses.
-			# # Also add a company field to Customer Supplier and Item
-			# self._make_custom_fields()
-
-			# self._migrate_accounts()
-
-			# # Some Xero Entities like Advance Payment, Payment aren't available firectly from API
-			# # Sales Invoice also sometimes needs to be saved as a Journal Entry
-			# # (When Item table is not present, This appens when Invoice is attached with a "StatementCharge" "ReimburseCharge
-			# # Details of both of these cannot be fetched from API)
-			# # Their GL entries need to be generated from GeneralLedger Report.
-			# self._fetch_general_ledger()
-
-			# # Xero data can have transactions that do not fall in existing fiscal years in ERPNext
-			# self._create_fiscal_years()
-
-			# self._allow_fraction_in_unit()
-
-			# # Following entities are directly available from API
-			# # Invoice can be an exception sometimes though (as explained above).
-			# entities_for_normal_transform = [
-			# 	"Customer",
-			# 	"Item",
-			# 	"Vendor",
-			# 	"Preferences",
-			# 	"JournalEntry",
-			# 	"Purchase",
-			# 	"Deposit",
-			# 	"Invoice",
-			# 	"CreditMemo",
-			# 	"SalesReceipt",
-			# 	"RefundReceipt",
-			# 	"Bill",
-			# 	"VendorCredit",
-			# 	"Payment",
-			# 	"BillPayment",
-			# ]
-			# for entity in entities_for_normal_transform:
-			# 	self._migrate_entries(entity)
-
-			# # Following entries are not available directly from API, Need to be regenrated from GeneralLedger Report
-			# entities_for_gl_transform = [
-			# 	"Advance Payment",
-			# 	"Tax Payment",
-			# 	"Sales Tax Payment",
-			# 	"Purchase Tax Payment",
-			# 	"Inventory Qty Adjust",
-			# ]
-			# for entity in entities_for_gl_transform:
-			# 	self._migrate_entries_from_gl(entity)
-			# self.set_indicator("Complete")
+		try: 
+			self.get_accounts()
+			self.get_bank_transactions()
+			self.get_bank_tramsfers()
+			self.get_batch_payments()
+			self.get_invoices()
+			self.get_items()
+			self.get_journals()
+			self.get_manual_journals()
+			self.get_payments()
+			self.get_receipts()
+			self.get_tax_rates()
+			self.get_users()
 		except Exception as e:
 			self.set_indicator("Failed")
 			self._log_error(e)
@@ -144,17 +89,27 @@ class XeroMigrator(Document):
 		self.access_token = token["access_token"]
 		self.refresh_token = token["refresh_token"]
 		self.save()
+	
+	def get_tenant_id(self, **kwargs):
+		try:
+			query_uri = "https://api.xero.com/connections"
+			response = self._get(query_uri)
+			response_string = response.json()
+
+			return response_string
+		except Exception as e:
+			self._log_error(e, response.text)
 
 	def _make_custom_fields(self):
 		doctypes_for_xero_id_field = [
-			"Account",
-			"Customer",
+			"Account", # AccountID
+			"Customer", 
 			"Address",
-			"Item",
+			"Item", # ItemID
 			"Supplier",
-			"Sales Invoice",
+			"Sales Invoice", # InvoiceID
 			"Journal Entry",
-			"Purchase Invoice",
+			"Purchase Invoice", # InvoiceID # Tax
 		]
 		for doctype in doctypes_for_xero_id_field:
 			self._make_custom_xero_id_field(doctype)
@@ -223,7 +178,7 @@ class XeroMigrator(Document):
 		try:
 			query_uri = "{}/company/{}/query".format(
 				self.api_endpoint,
-				self.xero_company_id,
+				self.xero_tenant_id,
 			)
 			max_result_count = 1000
 			# Count number of entries
@@ -254,12 +209,7 @@ class XeroMigrator(Document):
 			)
 			response = self._get(
 				query_uri,
-				params={
-					"columns": ",".join(["tx_date", "txn_type", "credit_amt", "debt_amt"]),
-					"date_macro": "All",
-					"minorversion": 3,
-				},
-			)
+				)
 			self.gl_entries = {}
 			for section in response.json()["Rows"]["Row"]:
 				if section["type"] == "Section":
@@ -1335,6 +1285,7 @@ class XeroMigrator(Document):
 		kwargs["headers"] = {
 			"Accept": "application/json",
 			"Authorization": "Bearer {}".format(self.access_token),
+			"Xero-tenant-id": self.xero_tenant_id
 		}
 		response = requests.get(*args, **kwargs)
 		# HTTP Status code 401 here means that the access_token is expired
@@ -1384,3 +1335,171 @@ class XeroMigrator(Document):
 		self.status = status
 		self.save()
 		frappe.db.commit()
+
+	# given an ID:
+	# https://api.xero.com/api.xro/2.0/Accounts/{AccountID}
+	def get_accounts(self):
+		try:
+			query_uri = "{}/Accounts".format(
+				self.api_endpoint
+			)
+			response = self._get(query_uri)
+			response_string = response.json()
+
+			return response_string
+		except Exception as e:
+			self._log_error(e, response.text)
+
+	# given an ID:
+	# https://api.xero.com/api.xro/2.0/BankTransactions/{BankTransactionID}
+	def get_bank_transactions(self):
+		try:
+			query_uri = "{}/BankTransactions".format(
+				self.api_endpoint
+			)
+			response = self._get(query_uri)
+			response_string = response.json()
+
+			return response_string
+		except Exception as e:
+			self._log_error(e, response.text)
+
+	# given an ID:
+	# https://api.xero.com/api.xro/2.0/BankTransfers/{BankTransferID}
+	def get_bank_tramsfers(self):
+		try:
+			query_uri = "{}/BankTransfers".format(
+				self.api_endpoint
+			)
+			response = self._get(query_uri)
+			response_string = response.json()
+
+			return response_string
+		except Exception as e:
+			self._log_error(e, response.text)
+
+	# given an ID:
+	# https://api.xero.com/api.xro/2.0/BatchPayments/{BatchPaymentID}
+	def get_batch_payments(self):
+		try:
+			query_uri = "{}/BatchPayments".format(
+				self.api_endpoint
+			)
+			response = self._get(query_uri)
+			response_string = response.json()
+
+			return response_string
+		except Exception as e:
+			self._log_error(e, response.text)
+
+	# given an ID:
+	# https://api.xero.com/api.xro/2.0/Invoices/{InvoiceID}
+	def get_invoices(self):
+		try:
+			query_uri = "{}/Invoices".format(
+				self.api_endpoint
+			)
+			response = self._get(query_uri)
+			response_string = response.json()
+
+			return response_string
+		except Exception as e:
+			self._log_error(e, response.text)
+
+	# given an ID:
+	# https://api.xero.com/api.xro/2.0/Items/{ItemID}
+	def get_items(self):
+		try:
+			query_uri = "{}/Items".format(
+				self.api_endpoint
+			)
+			response = self._get(query_uri)
+			response_string = response.json()
+
+			return response_string
+		except Exception as e:
+			self._log_error(e, response.text)
+
+	# given an ID:
+	# https://api.xero.com/api.xro/2.0/Journals/{JournalID}
+	def get_journals(self):
+		try:
+			query_uri = "{}/Journals".format(
+				self.api_endpoint
+			)
+			response = self._get(query_uri)
+			response_string = response.json()
+
+			return response_string
+		except Exception as e:
+			self._log_error(e, response.text)
+
+	# given an ID:
+	# https://api.xero.com/api.xro/2.0/ManualJournals/{JournalID}
+	def get_manual_journals(self):
+		try:
+			query_uri = "{}/ManualJournals".format(
+				self.api_endpoint
+			)
+			response = self._get(query_uri)
+			response_string = response.json()
+
+			return response_string
+		except Exception as e:
+			self._log_error(e, response.text)
+
+	# given an ID:
+	# https://api.xero.com/api.xro/2.0/Payments/{PaymentID}
+	def get_payments(self):
+		try:
+			query_uri = "{}/Payments".format(
+				self.api_endpoint
+			)
+			response = self._get(query_uri)
+			response_string = response.json()
+
+			return response_string
+		except Exception as e:
+			self._log_error(e, response.text)
+
+	# given an ID:
+	# https://api.xero.com/api.xro/2.0/Receipts/{ReceiptID}
+	def get_receipts(self):
+		try:
+			query_uri = "{}/Receipts".format(
+				self.api_endpoint
+			)
+			response = self._get(query_uri)
+			response_string = response.json()
+
+			return response_string
+		except Exception as e:
+			self._log_error(e, response.text)
+
+	# given an ID:
+	# https://api.xero.com/api.xro/2.0/TaxRates/{TaxRateID}
+	def get_tax_rates(self):
+		try:
+			query_uri = "{}/TaxRates".format(
+				self.api_endpoint
+			)
+			response = self._get(query_uri)
+			response_string = response.json()
+
+			return response_string
+		except Exception as e:
+			self._log_error(e, response.text)
+
+	# given an ID:
+	# https://api.xero.com/api.xro/2.0/Users/{UserID}
+	def get_users(self):
+		try:
+			query_uri = "{}/Users".format(
+				self.api_endpoint
+			)
+			response = self._get(query_uri)
+			response_string = response.json()
+
+			return response_string
+		except Exception as e:
+			self._log_error(e, response.text)
