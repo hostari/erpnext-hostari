@@ -27,7 +27,7 @@
   "authorization_column_break",
   "authorization_url",
   "access_token",
-  "xero_company_id",
+  "xero_tenant_id",
   "company_settings",
   "company",
   "default_shipping_account",
@@ -145,12 +145,6 @@
    "label": "Access Token"
   },
   {
-   "fieldname": "xero_company_id",
-   "fieldtype": "Data",
-   "hidden": 1,
-   "label": "Xero Company ID"
-  },
-  {
    "fieldname": "company_settings",
    "fieldtype": "Section Break",
    "hidden": 1,
@@ -196,11 +190,17 @@
   {
    "fieldname": "column_break_fakz",
    "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "xero_tenant_id",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Xero Tenant ID"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2023-11-29 11:32:20.633825",
+ "modified": "2023-12-04 04:51:26.025817",
  "modified_by": "Administrator",
  "module": "ERPNext Integrations",
  "name": "Xero Migrator",

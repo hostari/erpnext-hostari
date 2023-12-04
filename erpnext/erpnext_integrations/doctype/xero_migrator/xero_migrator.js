@@ -9,8 +9,13 @@ frappe.ui.form.on("Xero Migrator", {
 		window.open(frm.doc.authorization_url)
 	},
     fetch_data: function(frm) {
-		frm.call("migrate")
+		response = frm.call("migrate")
+        // console.log(frm.doc.xero_tenant_id)
+        // console.log(response)
 	},
+    clear_access_token: function(frm) {
+        frm.call("clear_access_token")
+    },
     onload: function(frm) {
 		frm.trigger("set_indicator")
 		var domain = frappe.urllib.get_base_url()
@@ -31,13 +36,16 @@ frappe.ui.form.on("Xero Migrator", {
 	},
     refresh: function(frm) {
 		frm.trigger("set_indicator")
+        // frm.add_custom_button(__("Retry Connecting to Xero"), function () {
+        //     frm.trigger("connect")
+        // });
 		if (!frm.doc.access_token) {
 			// Unset access_token signifies that we don't have enough information to connect to Xero API and fetch data
-			if (frm.doc.authorization_url) {
+			// if (frm.doc.authorization_url) {
 				frm.add_custom_button(__("Connect to Xero"), function () {
 					frm.trigger("connect")
 				});
-			}
+			// }
 		}
 		if (frm.doc.access_token) {
 			// If we have access_token that means we also have refresh_token we don't need user intervention anymore
@@ -51,7 +59,7 @@ frappe.ui.form.on("Xero Migrator", {
 					frm.trigger("fetch_data")
 				});
 			}
-		}
+		}        
 	},
     set_indicator: function(frm) {
 		var indicator_map = {
@@ -68,27 +76,4 @@ frappe.ui.form.on("Xero Migrator", {
 			frm.page.set_indicator(label, color)
 		}
 	},
-    // clear_access_token: function(frm) {
-    //     frm.add_custom_button(__('Clear Access Token'), function () {
-    //         frappe.confirm(
-    //             __('This will clear the existing Access Token. Are you sure?'),
-    //             function () {
-    //                 frappe.call({
-    //                     method: 'erpnext.erpnext_integrations.doctype.xero_migrator.xero_migrator.clear_access_token',
-    //                     args: {
-    //                         docname: frm.access_token,
-    //                     },
-    //                     callback: function (r) {
-    //                         if (r.message) {
-    //                             frappe.show_alert(__('Data cleared successfully'), 5);
-    //                             frm.reload_doc();
-    //                         }
-    //                     }
-    //                 })
-    //             }
-    //         )
-    //     })
-    // },
-
-
 });
