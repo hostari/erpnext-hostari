@@ -52,9 +52,9 @@ class XeroMigrator(Document):
 
 	def _migrate(self):
 		try: 
-			self.get_accounts()
+			self.get_accounts() #
 			self.get_bank_transactions()
-			self.get_bank_tramsfers()
+			self.get_bank_transfers()
 			self.get_batch_payments()
 			self.get_invoices()
 			self.get_items()
@@ -147,24 +147,25 @@ class XeroMigrator(Document):
 
 	def _migrate_accounts(self):
 		self._make_root_accounts()
-		for entity in ["Account", "TaxRate", "TaxCode"]:
-			self._migrate_entries(entity)
+
 
 	def _make_root_accounts(self):
+		# root_type: ERPNext
+		# account class type: Xero
 		roots = ["Asset", "Equity", "Expense", "Liability", "Income"]
 		for root in roots:
 			try:
 				if not frappe.db.exists(
 					{
 						"doctype": "Account",
-						"name": encode_company_abbr("{} - QB".format(root), self.company),
+						"name": encode_company_abbr("{} - Xero".format(root), self.company),
 						"company": self.company,
 					}
 				):
 					frappe.get_doc(
 						{
 							"doctype": "Account",
-							"account_name": "{} - QB".format(root),
+							"account_name": "{} - Xero".format(root),
 							"root_type": root,
 							"is_group": "1",
 							"company": self.company,
@@ -174,33 +175,83 @@ class XeroMigrator(Document):
 				self._log_error(e, root)
 		frappe.db.commit()
 
-	def _migrate_entries(self, entity):
-		try:
-			query_uri = "{}/company/{}/query".format(
-				self.api_endpoint,
-				self.xero_tenant_id,
-			)
-			max_result_count = 1000
-			# Count number of entries
-			response = self._get(query_uri, params={"query": """SELECT COUNT(*) FROM {}""".format(entity)})
-			entry_count = response.json()["QueryResponse"]["totalCount"]
+	# Xero includes Tax Rate as part of an Account attribute
+	#ERPNext Records Tax Rates and Tax Types as a separate account
+	def get_tax_types(self):
+		pass
 
-			# fetch pages and accumulate
-			entries = []
-			for start_position in range(1, entry_count + 1, max_result_count):
-				response = self._get(
-					query_uri,
-					params={
-						"query": """SELECT * FROM {} STARTPOSITION {} MAXRESULTS {}""".format(
-							entity, start_position, max_result_count
-						)
-					},
-				)
-				entries.extend(response.json()["QueryResponse"][entity])
-			entries = self._preprocess_entries(entity, entries)
-			self._save_entries(entity, entries)
+	def get_tax_rates(self):
+		try:
+			query_uri = "{}/TaxRates".format(
+				self.api_endpoint
+			)
+			response = self._get(query_uri).json()
+
+			tax_rates = response["TaxRates"]
+
+			tax_name_with_rates = []
+
+			for tax_rate in tax_rates:
+				tax_name_with_rate = self._map_tax_name_to_rate(tax_rate)
+				tax_name_with_rates.append(tax_name_with_rate)
+
+			tax_name_with_rates
 		except Exception as e:
 			self._log_error(e, response.text)
+
+	def _map_tax_name_to_rate(self, tax_rate):
+		name = tax_rate["Name"]
+		rate = tax_rate["DisplayTaxRate"]
+		{name: rate}
+
+	def get_tax_rate_value(self, tax_name):
+		tax_rates_array = self.get_tax_rates(self)
+
+		for tax_rate in tax_rates_array:
+			if tax_name in tax_rates_array:
+				return tax_rate[tax_name]
+			return None  # Key not found in any dictionary
+
+	# given an ID:
+	# https://api.xero.com/api.xro/2.0/Accounts/{AccountID}
+	def get_accounts(self):
+		try:
+			query_uri = "{}/Accounts".format(
+				self.api_endpoint
+			)
+			response = self._get(query_uri).json()
+
+			accounts = response["Accounts"]
+
+			for account in accounts:
+				self._save_account(account)
+
+
+		except Exception as e:
+			self._log_error(e, response.text)
+
+	def _save_account(self, account):
+		# Map Xero Account Types to ERPNext root_accunts and and root_type
+		try:
+			tax_type = account["TaxType"]
+			account_object = {
+				"doctype": "Account",
+				"xero_id": account["AccountID"],
+				"account_number": account["Code"],
+				"account_number": account["Name"],
+				"root_type": account["Class"],
+				"account_type": account["Type"],
+				"account_currency": account["CurrencyCode"],
+				"company": self.company,
+			}	
+
+			if tax_type != "NONE":
+				tax_rate_value = self.get_tax_rate_value(self, tax_type)
+				account_object["tax_rate"] = tax_rate_value
+
+			frappe.get_doc(account_object).insert()
+		except Exception as e:
+			self._log_error(e, account)
 
 	def _fetch_general_ledger(self):
 		try:
@@ -358,81 +409,6 @@ class XeroMigrator(Document):
 				account["is_group"] = 0
 		return sorted(accounts, key=lambda account: int(account["Id"]))
 
-	def _save_account(self, account):
-		mapping = {
-			"Bank": "Asset",
-			"Other Current Asset": "Asset",
-			"Fixed Asset": "Asset",
-			"Other Asset": "Asset",
-			"Accounts Receivable": "Asset",
-			"Equity": "Equity",
-			"Expense": "Expense",
-			"Other Expense": "Expense",
-			"Cost of Goods Sold": "Expense",
-			"Accounts Payable": "Liability",
-			"Credit Card": "Liability",
-			"Long Term Liability": "Liability",
-			"Other Current Liability": "Liability",
-			"Income": "Income",
-			"Other Income": "Income",
-		}
-		# Map Xero Account Types to ERPNext root_accunts and and root_type
-		try:
-			if not frappe.db.exists(
-				{"doctype": "Account", "xero_id": account["Id"], "company": self.company}
-			):
-				is_child = account["SubAccount"]
-				is_group = account["is_group"]
-				# Create Two Accounts for every Group Account
-				if is_group:
-					account_id = "Group - {}".format(account["Id"])
-				else:
-					account_id = account["Id"]
-
-				if is_child:
-					parent_account = self._get_account_name_by_id(
-						"Group - {}".format(account["ParentRef"]["value"])
-					)
-				else:
-					parent_account = encode_company_abbr(
-						"{} - QB".format(mapping[account["AccountType"]]), self.company
-					)
-
-				frappe.get_doc(
-					{
-						"doctype": "Account",
-						"xero_id": account_id,
-						"account_name": self._get_unique_account_name(account["Name"]),
-						"root_type": mapping[account["AccountType"]],
-						"account_type": self._get_account_type(account),
-						"account_currency": account["CurrencyRef"]["value"],
-						"parent_account": parent_account,
-						"is_group": is_group,
-						"company": self.company,
-					}
-				).insert()
-
-				if is_group:
-					# Create a Leaf account corresponding to the group account
-					frappe.get_doc(
-						{
-							"doctype": "Account",
-							"xero_id": account["Id"],
-							"account_name": self._get_unique_account_name(account["Name"]),
-							"root_type": mapping[account["AccountType"]],
-							"account_type": self._get_account_type(account),
-							"account_currency": account["CurrencyRef"]["value"],
-							"parent_account": self._get_account_name_by_id(account_id),
-							"is_group": 0,
-							"company": self.company,
-						}
-					).insert()
-				if account.get("AccountSubType") == "UndepositedFunds":
-					self.undeposited_funds_account = self._get_account_name_by_id(account["Id"])
-					self.save()
-		except Exception as e:
-			self._log_error(e, account)
-
 	def _get_account_type(self, account):
 		account_subtype_mapping = {"UndepositedFunds": "Cash"}
 		account_type = account_subtype_mapping.get(account.get("AccountSubType"))
@@ -463,9 +439,9 @@ class XeroMigrator(Document):
 					{
 						"doctype": "Account",
 						"xero_id": "TaxRate - {}".format(tax_rate["Id"]),
-						"account_name": "{} - QB".format(tax_rate["Name"]),
+						"account_name": "{} - Xero".format(tax_rate["Name"]),
 						"root_type": "Liability",
-						"parent_account": encode_company_abbr("{} - QB".format("Liability"), self.company),
+						"parent_account": encode_company_abbr("{} - Xero".format("Liability"), self.company),
 						"is_group": "0",
 						"company": self.company,
 					}
@@ -1306,9 +1282,9 @@ class XeroMigrator(Document):
 
 	def _get_unique_account_name(self, xero_name, number=0):
 		if number:
-			xero_account_name = "{} - {} - QB".format(xero_name, number)
+			xero_account_name = "{} - {} - Xero".format(xero_name, number)
 		else:
-			xero_account_name = "{} - QB".format(xero_name)
+			xero_account_name = "{} - Xero".format(xero_name)
 		company_encoded_account_name = encode_company_abbr(xero_account_name, self.company)
 		if frappe.db.exists(
 			{"doctype": "Account", "name": company_encoded_account_name, "company": self.company}
@@ -1337,20 +1313,6 @@ class XeroMigrator(Document):
 		frappe.db.commit()
 
 	# given an ID:
-	# https://api.xero.com/api.xro/2.0/Accounts/{AccountID}
-	def get_accounts(self):
-		try:
-			query_uri = "{}/Accounts".format(
-				self.api_endpoint
-			)
-			response = self._get(query_uri)
-			response_string = response.json()
-
-			return response_string
-		except Exception as e:
-			self._log_error(e, response.text)
-
-	# given an ID:
 	# https://api.xero.com/api.xro/2.0/BankTransactions/{BankTransactionID}
 	def get_bank_transactions(self):
 		try:
@@ -1366,7 +1328,7 @@ class XeroMigrator(Document):
 
 	# given an ID:
 	# https://api.xero.com/api.xro/2.0/BankTransfers/{BankTransferID}
-	def get_bank_tramsfers(self):
+	def get_bank_transfers(self):
 		try:
 			query_uri = "{}/BankTransfers".format(
 				self.api_endpoint
