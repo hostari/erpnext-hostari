@@ -59,7 +59,7 @@ class XeroMigrator(Document):
 			self.get_bank_transfers() #skipped, to do: pull and download data
 			self.get_batch_payments() #skipped, to do: pull and download data
 			self.get_invoices() # done
-			self.get_items() 
+			self.get_items() # split to items for sale and stock
 			self.get_journals()
 			self.get_manual_journals()
 			self.get_payments()
@@ -528,24 +528,23 @@ class XeroMigrator(Document):
 			if not frappe.db.exists(
 				{"doctype": "Item", "xero_id": item["Id"], "company": self.company}
 			):
-				if item["Type"] in ("Service", "Inventory"):
-					item_dict = {
-						"doctype": "Item",
-						"xero_id": item["Id"],
-						"item_code": encode_company_abbr(item["Name"], self.company),
-						"stock_uom": "Unit",
-						"is_stock_item": 0,
-						"item_group": "All Item Groups",
-						"company": self.company,
-						"item_defaults": [{"company": self.company, "default_warehouse": self.default_warehouse}],
-					}
-					if "ExpenseAccountRef" in item:
-						expense_account = self._get_account_name_by_id(item["ExpenseAccountRef"]["value"])
-						item_dict["item_defaults"][0]["expense_account"] = expense_account
-					if "IncomeAccountRef" in item:
-						income_account = self._get_account_name_by_id(item["IncomeAccountRef"]["value"])
-						item_dict["item_defaults"][0]["income_account"] = income_account
-					frappe.get_doc(item_dict).insert()
+				item_dict = {
+					"doctype": "Item",
+					"xero_id": item["ItemID"],
+					"item_code": item["Code"],
+					"item_name": item["Name"],
+					"company": self.company,
+					"stock_uom": "Unit",
+					"taxes": self.get_item_tax(item)
+				}
+
+			if item["IsSold"]:
+				item_dict["is_sales_item"] = "1"
+				item_dict["is_purchase_item"] = "0"
+			else:
+				item_dict["is_sales_item"] = "0"
+				item_dict["is_purchase_item"] = "1"
+
 		except Exception as e:
 			self._log_error(e, item)
 
@@ -1463,10 +1462,12 @@ class XeroMigrator(Document):
 			query_uri = "{}/Items".format(
 				self.api_endpoint
 			)
-			response = self._get(query_uri)
-			response_string = response.json()
+			response = self._get(query_uri).json()
+			items = response["Items"]
 
-			return response_string
+			for item in items:
+				self._save_item(item)
+
 		except Exception as e:
 			self._log_error(e, response.text)
 
