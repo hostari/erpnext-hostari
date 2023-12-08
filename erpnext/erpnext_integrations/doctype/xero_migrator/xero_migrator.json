@@ -85,7 +85,7 @@
    "reqd": 1
   },
   {
-   "default": "offline_access accounting.transactions profile accounting.contacts email accounting.settings openid",
+   "default": "offline_access accounting.transactions profile accounting.contacts email accounting.settings assets openid",
    "fieldname": "scope",
    "fieldtype": "Data",
    "in_list_view": 1,

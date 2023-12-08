@@ -66,6 +66,8 @@ class XeroMigrator(Document):
 			self.get_receipts()
 			self.get_tax_rates()
 			self.get_users()
+			self.get_assets()
+
 		except Exception as e:
 			self.set_indicator("Failed")
 			self._log_error(e)
@@ -114,6 +116,7 @@ class XeroMigrator(Document):
 			"Purchase Invoice", # InvoiceID # Tax
 			"Payment Entry",
 			"Bank Transaction"
+			"Asset"
 		]
 		for doctype in doctypes_for_xero_id_field:
 			self._make_custom_xero_id_field(doctype)
@@ -1574,3 +1577,39 @@ class XeroMigrator(Document):
 		except ValueError:
 			# If parsing fails, the string does not match the specified format
 			pass
+	
+	def get_assets(self):
+		try:
+			query_uri = "https://api.xero.com/assets.xro/1.0/Assets"
+
+			response = self._get(query_uri)
+			assets = response.json()
+
+			for asset in assets:
+				self._process_assets(asset)
+		except Exception as e:
+			self._log_error(e, response.text)
+
+	def _process_assets(self, asset):
+		asset_status_mapping = {
+			"DRAFT": "Draft",
+			"REGISTERED": "Submitted",
+			"DISPOSED": "Scrapped"
+		}
+
+		asset_dict = {
+			"xero_id": asset["assetId"],
+			"item_name": asset["assetName"],
+			"item_code": asset["assetNumber"],
+			"company": self.company,
+			"purchase_date": self.get_date_object(asset["purchaseDate"]), 
+			"purchase_receipt_amount": asset["purchasePrice"],
+			"assetStatus": asset_status_mapping[asset["assetStatus"]],
+			"value_after_depreciation": asset["bookDepreciationDetail"]["residualValue"],
+		}
+
+		frappe.get_doc(
+			asset_dict
+		).insert()
+
+
