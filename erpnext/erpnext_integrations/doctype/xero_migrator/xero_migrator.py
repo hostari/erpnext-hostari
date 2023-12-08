@@ -60,13 +60,12 @@ class XeroMigrator(Document):
 			self.get_batch_payments() #skipped, to do: pull and download data
 			self.get_invoices() # done
 			self.get_items() # split to items for sale and stock
-			self.get_journals()
 			self.get_manual_journals()
 			self.get_payments()
 			self.get_receipts()
-			self.get_tax_rates()
+			self.get_tax_rates() # done
 			self.get_users()
-			self.get_assets()
+			self.get_assets() # done
 
 		except Exception as e:
 			self.set_indicator("Failed")
@@ -1475,21 +1474,8 @@ class XeroMigrator(Document):
 			self._log_error(e, response.text)
 
 	# given an ID:
-	# https://api.xero.com/api.xro/2.0/Journals/{JournalID}
-	def get_journals(self):
-		try:
-			query_uri = "{}/Journals".format(
-				self.api_endpoint
-			)
-			response = self._get(query_uri)
-			response_string = response.json()
-
-			return response_string
-		except Exception as e:
-			self._log_error(e, response.text)
-
-	# given an ID:
 	# https://api.xero.com/api.xro/2.0/ManualJournals/{JournalID}
+	# In ERPNext, Journal Entries correspond to Journals/Manual Journals in Xero
 	def get_manual_journals(self):
 		try:
 			query_uri = "{}/ManualJournals".format(
