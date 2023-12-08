@@ -1391,12 +1391,12 @@ class XeroMigrator(Document):
 			query_uri = "{}/Invoices".format(
 				self.api_endpoint
 			)
-			invoices = self._get(query_uri).json()
+			response = self._get(query_uri)
+			invoices = response.json()
 			
 			for invoice in invoices:
 				self._process_invoice(invoice)
 
-			
 		except Exception as e:
 			self._log_error(e, response.text)
 
@@ -1414,7 +1414,6 @@ class XeroMigrator(Document):
 
 		invoice_dict = {
 			"xero_id": invoice["InvoiceID"],
-			"customer_name": invoice["Contact"]["Name"], 
 			"company": self.company,
 			"set_posting_time": "1",
 			"posting_date": self.get_date_object(invoice["DateString"]),
@@ -1433,8 +1432,10 @@ class XeroMigrator(Document):
 
 		if invoice_type == "ACCPAY":
 			invoice_dict["doctype"] = "Purchase Invoice"
+			invoice_dict["supplier_name"] = invoice["Contact"]["Name"]
 		else:
 			invoice_dict["doctype"] = "Sales Invoice"
+			invoice_dict["customer_name"] = invoice["Contact"]["Name"]
 		frappe.get_doc(
 			invoice_dict
 		).insert()	
