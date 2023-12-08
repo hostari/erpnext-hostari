@@ -10,6 +10,8 @@ from frappe import _
 from frappe.model.document import Document
 from requests_oauthlib import OAuth2Session
 
+from datetime import datetime
+
 from erpnext import encode_company_abbr
 
 @frappe.whitelist()
@@ -52,12 +54,12 @@ class XeroMigrator(Document):
 
 	def _migrate(self):
 		try: 
-			self.get_accounts() #
-			self.get_bank_transactions()
-			self.get_bank_transfers()
-			self.get_batch_payments()
-			self.get_invoices()
-			self.get_items()
+			self.get_accounts() # done
+			self.get_bank_transactions() # payment entries skipped
+			self.get_bank_transfers() #skipped, to do: pull and download data
+			self.get_batch_payments() #skipped, to do: pull and download data
+			self.get_invoices() # done
+			self.get_items() 
 			self.get_journals()
 			self.get_manual_journals()
 			self.get_payments()
@@ -110,6 +112,8 @@ class XeroMigrator(Document):
 			"Sales Invoice", # InvoiceID
 			"Journal Entry",
 			"Purchase Invoice", # InvoiceID # Tax
+			"Payment Entry",
+			"Bank Transaction"
 		]
 		for doctype in doctypes_for_xero_id_field:
 			self._make_custom_xero_id_field(doctype)
@@ -118,7 +122,19 @@ class XeroMigrator(Document):
 		for doctype in doctypes_for_company_field:
 			self._make_custom_company_field(doctype)
 
+		doctypes_for_account_field = ["Account"]
+		for doctype in doctypes_for_account_field:
+			self._make_bank_account_info_fields(doctype)
+
+		doctypes_for_bank_transaction_payment_entries_field = ["Bank Transaction"]
+		for doctype in doctypes_for_bank_transaction_payment_entries_field:
+			self._make_bank_account_payment_entries(doctype)
+
 		frappe.db.commit()
+
+	def _make_bank_account_payment_entries(self, doctype):
+		pass
+		# skip for now
 
 	def _make_custom_xero_id_field(self, doctype):
 		if not frappe.get_meta(doctype).has_field("xero_id"):
@@ -226,7 +242,6 @@ class XeroMigrator(Document):
 			for account in accounts:
 				self._save_account(account)
 
-
 		except Exception as e:
 			self._log_error(e, response.text)
 
@@ -234,24 +249,40 @@ class XeroMigrator(Document):
 		# Map Xero Account Types to ERPNext root_accunts and and root_type
 		try:
 			tax_type = account["TaxType"]
-			account_object = {
+			account_type = account["Type"]
+
+			account_dict = {
 				"doctype": "Account",
 				"xero_id": account["AccountID"],
 				"account_number": account["Code"],
-				"account_number": account["Name"],
+				"account_name": account["Name"],
 				"root_type": account["Class"],
-				"account_type": account["Type"],
+				"account_type": account_type,
 				"account_currency": account["CurrencyCode"],
 				"company": self.company,
 			}	
 
 			if tax_type != "NONE":
 				tax_rate_value = self.get_tax_rate_value(self, tax_type)
-				account_object["tax_rate"] = tax_rate_value
+				account_dict["tax_rate"] = tax_rate_value
 
-			frappe.get_doc(account_object).insert()
+			if account_type == "BANK":
+				account_dict["bank_account_number"] = account["BankAccountNumber"]
+
+			frappe.get_doc(account_dict).insert()
 		except Exception as e:
 			self._log_error(e, account)
+
+	def _make_bank_account_info_fields(self, doctype):
+		frappe.get_doc(
+			{
+				"doctype": "Custom Field",
+				"label": "Bank Account Number",
+				"dt": doctype,
+				"fieldname": "bank_account_number",
+				"fieldtype": "Data",
+			}
+		).insert()
 
 	def _fetch_general_ledger(self):
 		try:
@@ -628,68 +659,6 @@ class XeroMigrator(Document):
 				invoice_doc.submit()
 		except Exception as e:
 			self._log_error(e, [invoice, invoice_dict, json.loads(invoice_doc.as_json())])
-
-	def _get_si_items(self, invoice, is_return=False):
-		items = []
-		for line in invoice["Line"]:
-			if line["DetailType"] == "SalesItemLineDetail":
-				if line["SalesItemLineDetail"]["TaxCodeRef"]["value"] != "TAX":
-					tax_code = line["SalesItemLineDetail"]["TaxCodeRef"]["value"]
-				else:
-					if "TxnTaxCodeRef" in invoice["TxnTaxDetail"]:
-						tax_code = invoice["TxnTaxDetail"]["TxnTaxCodeRef"]["value"]
-					else:
-						tax_code = "NON"
-				if line["SalesItemLineDetail"]["ItemRef"]["value"] != "SHIPPING_ITEM_ID":
-					item = frappe.db.get_all(
-						"Item",
-						filters={
-							"xero_id": line["SalesItemLineDetail"]["ItemRef"]["value"],
-							"company": self.company,
-						},
-						fields=["name", "stock_uom"],
-					)[0]
-					items.append(
-						{
-							"item_code": item["name"],
-							"conversion_factor": 1,
-							"uom": item["stock_uom"],
-							"description": line.get("Description", line["SalesItemLineDetail"]["ItemRef"]["name"]),
-							"qty": line["SalesItemLineDetail"]["Qty"],
-							"price_list_rate": line["SalesItemLineDetail"]["UnitPrice"],
-							"cost_center": self.default_cost_center,
-							"warehouse": self.default_warehouse,
-							"item_tax_rate": json.dumps(self._get_item_taxes(tax_code)),
-						}
-					)
-				else:
-					items.append(
-						{
-							"item_name": "Shipping",
-							"conversion_factor": 1,
-							"expense_account": self._get_account_name_by_id(
-								"TaxRate - {}".format(line["SalesItemLineDetail"]["TaxCodeRef"]["value"])
-							),
-							"uom": "Unit",
-							"description": "Shipping",
-							"income_account": self.default_shipping_account,
-							"qty": 1,
-							"price_list_rate": line["Amount"],
-							"cost_center": self.default_cost_center,
-							"warehouse": self.default_warehouse,
-							"item_tax_rate": json.dumps(self._get_item_taxes(tax_code)),
-						}
-					)
-				if is_return:
-					items[-1]["qty"] *= -1
-			elif line["DetailType"] == "DescriptionOnly":
-				items[-1].update(
-					{
-						"margin_type": "Percentage",
-						"margin_rate_or_amount": int(line["Description"].split("%")[0]),
-					}
-				)
-		return items
 
 	def _get_item_taxes(self, tax_code):
 		tax_rates = self.tax_rates
@@ -1319,12 +1288,73 @@ class XeroMigrator(Document):
 			query_uri = "{}/BankTransactions".format(
 				self.api_endpoint
 			)
-			response = self._get(query_uri)
-			response_string = response.json()
+			response = self._get(query_uri).json()
+			bank_transactions = response["BankTransactions"]
+
+			for bank_transaction in bank_transactions:
+				self.process_bank_transaction(bank_transaction)
 
 			return response_string
 		except Exception as e:
 			self._log_error(e, response.text)
+
+	def _get_bank_account_number(self, bank_account_details):
+		if bank_account_details:
+			first_account = bank_account_details[0]
+			first_account.get("bank_account_number")
+
+	def _get_bank_transaction_line_items(self, bank_transaction_line_items):
+		for line_item in bank_transaction_line_items:
+			frappe.get_doc(
+				{
+					"doctype": "Payment Entry",
+					"xero_id": line_item["LineItemID"],
+					"payment_name": line_item["Description"],
+
+				}
+			).insert()
+				
+
+
+	def process_bank_transaction(self, bank_transaction):
+		# check bank_account_transaction.py: do we need to clear the payment_entries when the 
+		# transaction has been reconciled?
+		status_mapping = {
+			"PAID": "Settled",
+			"DELETED": "Cancelled"
+		}
+
+		if bank_transaction["IsReconciled"] == "true":
+			status_mapping[bank_transaction["Status"]] = "Reconciled"
+		else:
+			status_mapping[bank_transaction["Status"]] = "Unreconciled"
+
+		bank_account_details = frappe.get_list(
+			"Account",
+			filters={"bank_account_number": bank_transaction["BankAccount"]["Name"],
+			},
+		)
+
+		# skip Deposit and Withdrawal
+		bank_transaction_dict = {
+			"doctype": "Bank Transaction",
+			"xero_id": bank_transaction["BankTransactionID"],
+			"transaction_id": bank_transaction["BankTransactionID"],
+			"transaction_type": bank_transaction["Type"],
+			"company": self.company,
+			"date": bank_transaction["DateString"],
+			"status": status_mapping[bank_transaction["Status"]],
+			"bank_account": bank_transaction["BankAccount"]["Name"],
+			"bank_party_account_number": self._get_bank_account_number(bank_account_details),
+			"currency": bank_transaction["CurrencyCode"],
+			"reference_number": bank_transaction["Reference"],
+			"payment_entries": self._get_bank_transaction_line_items(bank_transaction["LineItems"]),
+			"allocated_amount": bank_transaction["Total"],
+		}
+
+		frappe.get_doc(
+			bank_transaction_dict
+		).insert()
 
 	# given an ID:
 	# https://api.xero.com/api.xro/2.0/BankTransfers/{BankTransferID}
@@ -1361,12 +1391,69 @@ class XeroMigrator(Document):
 			query_uri = "{}/Invoices".format(
 				self.api_endpoint
 			)
-			response = self._get(query_uri)
-			response_string = response.json()
+			invoices = self._get(query_uri).json()
+			
+			for invoice in invoices:
+				self._process_invoice(invoice)
 
-			return response_string
+			
 		except Exception as e:
 			self._log_error(e, response.text)
+
+	def _process_invoice(self, invoice):
+		invoice_type = invoice["Type"]
+
+		invoice_status_mapping = {
+			"DRAFT": "Draft",
+			"SUBMITTED": "Submitted",
+			"AUTHORISED": "Unpaid",
+			"PAID": "Paid", 
+			"DELETED": "Cancelled",
+			"VOIDED": "Cancelled"
+		}
+
+		invoice_dict = {
+			"xero_id": invoice["InvoiceID"],
+			"customer_name": invoice["Contact"]["Name"], 
+			"company": self.company,
+			"set_posting_time": "1",
+			"posting_date": self.get_date_object(invoice["DateString"]),
+			"posting_time": self.get_time_object(invoice["DateString"]),
+			"due_date": self.get_date_object(invoice["DueDateString"]),
+			"cost_center": self.default_cost_center,
+			"currency": invoice["CurrencyCode"],
+			"status": invoice_status_mapping[invoice["Status"]],
+			"total": invoice["Subtotal"],
+			"total_taxes_and_charges": invoice["TotalTax"],
+			"grand_total": invoice["Total"], 
+			"paid_amount": invoice["AmountPaid"], 
+			"outstanding_amount": invoice["AmountDue"],
+			"items": self.get_si_items(invoice)
+		}	
+
+		if invoice_type == "ACCPAY":
+			invoice_dict["doctype"] = "Purchase Invoice"
+		else:
+			invoice_dict["doctype"] = "Sales Invoice"
+		frappe.get_doc(
+			invoice_dict
+		).insert()	
+
+	def get_si_items(self, invoice, is_return=False):
+		items = []
+		for line_item in invoice["LineItems"]:
+			{
+				"description": line_item["Description"],
+				"qty": line_item["Quantity"],
+				"price_list_rate": line_item["UnitAmount"],
+				"item_code": line_item["ItemCode"],
+				"item_tax_rate": line_item["TaxAmount"],
+			}
+		
+		if is_return:
+			items[-1]["qty"] *= -1
+		
+		return items
 
 	# given an ID:
 	# https://api.xero.com/api.xro/2.0/Items/{ItemID}
@@ -1465,3 +1552,23 @@ class XeroMigrator(Document):
 			return response_string
 		except Exception as e:
 			self._log_error(e, response.text)
+
+	def get_date_object(self, date_time_string):
+		date_time_object = self.date_and_time_parser(self, date_time_string)
+		extracted_date = date_time_object.date()
+
+		extracted_date.strftime("%m-%d-%Y")
+
+	def get_time_object(self, date_time_string):
+		date_time_object = date_time_string.date()
+		date_time_object.time()
+
+	def date_and_time_parser(self, date_time_string):
+		date_time_string = "2009-05-27 00:00:00"
+
+		try:
+			datetime.strptime(date_time_string, "%Y-%m-%dT%H:%M:%S")
+
+		except ValueError:
+			# If parsing fails, the string does not match the specified format
+			pass
