@@ -60,7 +60,7 @@ class XeroMigrator(Document):
 			self.get_batch_payments() #skipped, to do: pull and download data
 			self.get_invoices() # done
 			self.get_items() # split to items for sale and stock
-			self.get_manual_journals()
+			self.get_manual_journals() # done
 			self.get_payments()
 			self.get_receipts()
 			self.get_tax_rates() # done
@@ -1478,16 +1478,62 @@ class XeroMigrator(Document):
 	# In ERPNext, Journal Entries correspond to Journals/Manual Journals in Xero
 	def get_manual_journals(self):
 		try:
-			query_uri = "{}/ManualJournals".format(
-				self.api_endpoint
-			)
-			response = self._get(query_uri)
-			response_string = response.json()
+			pages = [1]
+			uri_strings = []
 
-			return response_string
+			for page in pages:
+				query_uri = "{}/ManualJournals?page={}".format(
+					self.api_endpoint, page
+				)
+				response = self._get(query_uri) # check first page of Manual Journal
+				page_response = response.json()
+				manual_journal = page_response["ManualJournal"] #Check if Manual Journal object contains entries
+				if manual_journal:
+					# if array is not empty, append the URL string to the uri_strings_array
+					uri_strings.append(query_uri)
+					# increment the page
+					page += 1	
+					# append the page to the pages array
+					pages.append(page)
+					
+
+			for uri_string in uri_strings:
+				response = self._get(uri_string)
+				manual_journal_content = response.json()
+				self.process_manual_journal_entries(manual_journal_content)
+
 		except Exception as e:
 			self._log_error(e, response.text)
 
+	def process_manual_journal_entries(self, manual_journal_content):
+		for entry in manual_journal_content:
+			journal_entry_dict = {
+				"xero_id": entry["ManualJournalID"],
+				"company": self.company,
+				"title": entry["Narration"],
+				"posting_date": self.get_date_from_timestamp(self.timestamp_string[entry["Date"]]),
+				"accounts":  self.get_journal_entry_accounts(entry["JournalLines"])
+			}
+	
+	def get_journal_entry_accounts(self, journal_lines):
+		journal_entry_accounts = []
+
+		for line in journal_lines:
+			account = frappe.db.get_value("Account", {"account_number": line["Account"]}, "account_name")
+			journal_line_dict = {
+				"reference_name": line["Description"],
+				"account": account
+			}
+
+			if line["LineAmount"] > 0:
+				journal_line_dict["debit"] = line["LineAmount"]
+			else:
+				journal_line_dict["credit"] = line["LineAmount"]
+
+			journal_entry_accounts.append(journal_line_dict)
+
+		return journal_entry_accounts
+	
 	# given an ID:
 	# https://api.xero.com/api.xro/2.0/Payments/{PaymentID}
 	def get_payments(self):
@@ -1543,6 +1589,12 @@ class XeroMigrator(Document):
 			return response_string
 		except Exception as e:
 			self._log_error(e, response.text)
+
+	def get_date_from_timestamp(self, timestamp_string):
+		timestamp = int(timestamp_string.split('(')[1].split('+')[0])
+		date_object = datetime.utcfromtimestamp(timestamp / 1000.0)
+
+		date_object.date().strftime("%m-%d-%Y")
 
 	def get_date_object(self, date_time_string):
 		date_time_object = self.date_and_time_parser(self, date_time_string)
