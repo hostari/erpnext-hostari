@@ -10,7 +10,7 @@ from frappe import _
 from frappe.model.document import Document
 from requests_oauthlib import OAuth2Session
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from erpnext import encode_company_abbr
 
@@ -50,10 +50,19 @@ class XeroMigrator(Document):
 
 	@frappe.whitelist()
 	def migrate(self):	
-		self._migrate
+		frappe.enqueue_doc("Xero Migrator", "Xero Migrator", "_migrate", queue="long")
 
 	def _migrate(self):
-		try: 
+		try:
+			self.set_indicator("In Progress") # done
+			# Add xero_id field to every document so that we can lookup by Id reference
+			# provided by documents in API responses.
+			# Also add a company field to Customer Supplier and Item
+			self._make_custom_fields() # done
+
+			self._migrate_accounts()
+
+			#-----------------------------------------------------------------	
 			self.get_accounts() # done
 			self.get_bank_transactions() # payment entries skipped
 			self.get_bank_transfers() #skipped, to do: pull and download data
@@ -61,11 +70,10 @@ class XeroMigrator(Document):
 			self.get_invoices() # done
 			self.get_items() # split to items for sale and stock
 			self.get_manual_journals() # done
-			self.get_payments()
-			self.get_receipts()
 			self.get_tax_rates() # done
 			self.get_users()
 			self.get_assets() # done
+			#-----------------------------------------------------------------
 
 		except Exception as e:
 			self.set_indicator("Failed")
@@ -73,6 +81,7 @@ class XeroMigrator(Document):
 
 		frappe.db.commit()
 
+	#xero
 	def get_tokens(self):
 		token = self.oauth.fetch_token(
 			token_url=self.token_endpoint, client_secret=self.client_secret, code=self.code
@@ -81,6 +90,7 @@ class XeroMigrator(Document):
 		self.refresh_token = token["refresh_token"]
 		self.save()
 
+	#xero
 	def _refresh_tokens(self):
 		token = self.oauth.refresh_token(
 			token_url=self.token_endpoint,
@@ -93,6 +103,7 @@ class XeroMigrator(Document):
 		self.refresh_token = token["refresh_token"]
 		self.save()
 	
+	#xero
 	def get_tenant_id(self, **kwargs):
 		try:
 			query_uri = "https://api.xero.com/connections"
@@ -103,18 +114,18 @@ class XeroMigrator(Document):
 		except Exception as e:
 			self._log_error(e, response.text)
 
+	# done
 	def _make_custom_fields(self):
 		doctypes_for_xero_id_field = [
-			"Account", # AccountID
+			"Account",
 			"Customer", 
 			"Address",
-			"Item", # ItemID
+			"Item",
 			"Supplier",
-			"Sales Invoice", # InvoiceID
+			"Sales Invoice",
 			"Journal Entry",
-			"Purchase Invoice", # InvoiceID # Tax
+			"Purchase Invoice",
 			"Payment Entry",
-			"Bank Transaction"
 			"Asset"
 		]
 		for doctype in doctypes_for_xero_id_field:
@@ -124,20 +135,22 @@ class XeroMigrator(Document):
 		for doctype in doctypes_for_company_field:
 			self._make_custom_company_field(doctype)
 
-		doctypes_for_account_field = ["Account"]
-		for doctype in doctypes_for_account_field:
-			self._make_bank_account_info_fields(doctype)
-
 		doctypes_for_bank_transaction_payment_entries_field = ["Bank Transaction"]
 		for doctype in doctypes_for_bank_transaction_payment_entries_field:
 			self._make_bank_account_payment_entries(doctype)
 
+		doctypes_for_invoice_number_fields = ["Sales Invoice", "Purchase Invoice"]
+		for doctype in doctypes_for_invoice_number_fields:
+			self._make_invoice_number_field(doctype)
+
 		frappe.db.commit()
 
+	#xero
 	def _make_bank_account_payment_entries(self, doctype):
 		pass
 		# skip for now
 
+	# done
 	def _make_custom_xero_id_field(self, doctype):
 		if not frappe.get_meta(doctype).has_field("xero_id"):
 			frappe.get_doc(
@@ -150,6 +163,7 @@ class XeroMigrator(Document):
 				}
 			).insert()
 
+	# done
 	def _make_custom_company_field(self, doctype):
 		if not frappe.get_meta(doctype).has_field("company"):
 			frappe.get_doc(
@@ -163,13 +177,27 @@ class XeroMigrator(Document):
 				}
 			).insert()
 
+	def _make_invoice_number_field(self, doctype):
+		if not frappe.get_meta(doctype).has_field("invoice_number"):
+			frappe.get_doc(
+				{
+					"doctype": "Custom Field",
+					"label": "Invoice Number",
+					"dt": doctype,
+					"fieldname": "invoice_number",
+					"fieldtype": "Data",
+				}
+			).insert()
+
 	def _migrate_accounts(self):
+		# create the root accounts first before migrating the specific accounts
 		self._make_root_accounts()
 
+		for entity in ["Account", "TaxRate"]:
+			self._migrate_entries(entity)
 
 	def _make_root_accounts(self):
-		# root_type: ERPNext
-		# account class type: Xero
+		# classify accounts for easier reporting
 		roots = ["Asset", "Equity", "Expense", "Liability", "Income"]
 		for root in roots:
 			try:
@@ -185,7 +213,7 @@ class XeroMigrator(Document):
 							"doctype": "Account",
 							"account_name": "{} - Xero".format(root),
 							"root_type": root,
-							"is_group": "1",
+							"is_group": "1", # root accounts are group accounts
 							"company": self.company,
 						}
 					).insert(ignore_mandatory=True)
@@ -193,11 +221,78 @@ class XeroMigrator(Document):
 				self._log_error(e, root)
 		frappe.db.commit()
 
-	# Xero includes Tax Rate as part of an Account attribute
-	#ERPNext Records Tax Rates and Tax Types as a separate account
-	def get_tax_types(self):
-		pass
+	def _migrate_entries(self, entity):
+		try:
+			if entity == "Asset":
+				query_uri = "https://api.xero.com/assets.xro/1.0/Assets"
+			else:
+				query_uri = "{}/{}".format(
+					self.api_endpoint,
+					entity,
+				)
+			# Count number of entries
+			# fetch pages and accumulate
+				
+			entries = self._preprocess_entries(entity, entries)
+			self._save_entries(entity, entries)
 
+		except Exception as e:
+			self._log_error(e, response.text)
+
+	# pulls data from Xero API
+	# each of the methods designates Xero data into ERPNext
+	# doctypes
+	def _save_entries(self, entity, entries):
+		entity_method_map = {
+			"Account": self._save_account, #EN: Account
+			"TaxRate": self._save_tax_rate, #EN: Sales and Purchase Tax
+			"Contact": self._save_contact, #EN: Customer and Supplier
+			"Item": self._save_item, #EN: Item
+			"Invoice": self._save_invoice, #EN: POS, Sales, Purchase Invoice (retrieve individual invoices to retrieve line items)
+			"Payment": self._save_payment, #EN: Payment Entry, AP and AR invoices, invoices
+			"CreditNote": self._save_credit_note, #EN: Sales Invoice; Credit Note; Payment Entry
+			"ManualJournal": self._save_manual_journal, #EN: Journal Entry
+			"BankTransaction": self._save_bank_transaction, #EN: Bank Transaction
+			"Asset": self._save_asset #EN: Asset
+
+			#"TaxCode": self._save_tax_code,
+			#"Preferences": self._save_preference,
+			#"Customer": self._save_customer,
+			#"Supplier": self._save_vendor,
+			#"SalesReceipt": self._save_sales_receipt,
+			#"RefundReceipt": self._save_refund_receipt,
+			#"VendorCredit": self._save_vendor_credit,
+			#"BillPayment": self._save_bill_payment,
+			#"Deposit": self._save_deposit,
+			#"Advance Payment": self._save_advance_payment,
+			# "Tax Payment": self._save_tax_payment,
+			# "Sales Tax Payment": self._save_tax_payment,
+			# "Purchase Tax Payment": self._save_tax_payment,
+			# "Inventory Qty Adjust": self._save_inventory_qty_adjust,
+		}
+		total = len(entries)
+		for index, entry in enumerate(entries, start=1):
+			self._publish(
+				{
+					"event": "progress",
+					"message": _("Saving {0}").format(entity),
+					"count": index,
+					"total": total,
+				}
+			)
+			entity_method_map[entity](entry)
+		frappe.db.commit()
+
+	def _preprocess_entries(self, entity, entries):
+		entity_method_map = {
+			"TaxRate": self._preprocess_tax_rates,
+		}
+		preprocessor = entity_method_map.get(entity)
+		if preprocessor:
+			entries = preprocessor(entries)
+		return entries
+
+	#xero
 	def get_tax_rates(self):
 		try:
 			query_uri = "{}/TaxRates".format(
@@ -217,11 +312,13 @@ class XeroMigrator(Document):
 		except Exception as e:
 			self._log_error(e, response.text)
 
+	#xero
 	def _map_tax_name_to_rate(self, tax_rate):
 		name = tax_rate["Name"]
 		rate = tax_rate["DisplayTaxRate"]
 		{name: rate}
 
+	#xero
 	def get_tax_rate_value(self, tax_name):
 		tax_rates_array = self.get_tax_rates(self)
 
@@ -230,6 +327,7 @@ class XeroMigrator(Document):
 				return tax_rate[tax_name]
 			return None  # Key not found in any dictionary
 
+	#xero
 	# given an ID:
 	# https://api.xero.com/api.xro/2.0/Accounts/{AccountID}
 	def get_accounts(self):
@@ -247,234 +345,122 @@ class XeroMigrator(Document):
 		except Exception as e:
 			self._log_error(e, response.text)
 
+	#xero
 	def _save_account(self, account):
-		# Map Xero Account Types to ERPNext root_accunts and and root_type
+		# Account Class in Xero
+		root_account_mapping = {
+			"ASSET": "Asset",
+			"EQUITY": "Equity",
+			"EXPENSE": "Expense",
+			"LIABILITY": "Liability",
+			"REVENUE": "Income"
+		}
+		
 		try:
-			tax_type = account["TaxType"]
-			account_type = account["Type"]
+			if not frappe.db.exists(
+				{"doctype": "Account", "xero_id": account["AccountID"], "company": self.company}
+			):
+				account_type = account["Type"]
 
-			account_dict = {
-				"doctype": "Account",
-				"xero_id": account["AccountID"],
-				"account_number": account["Code"],
-				"account_name": account["Name"],
-				"root_type": account["Class"],
-				"account_type": account_type,
-				"account_currency": account["CurrencyCode"],
-				"company": self.company,
-			}	
+				account_dict = {
+					"doctype": "Account",
+					"xero_id": account["AccountID"],
+					"account_number": account["Code"],
+					"account_name": self._get_unique_account_name(account["Name"]),
+					"root_type": root_account_mapping[account["Class"]],
+					"account_type": self._get_account_type(account),
+					"company": self.company,
+				}
 
-			if tax_type != "NONE":
-				tax_rate_value = self.get_tax_rate_value(self, tax_type)
-				account_dict["tax_rate"] = tax_rate_value
+				if account_type == "BANK":
+					account_dict["account_currency"] = account["CurrencyCode"]
+					self._create_bank_account
 
-			if account_type == "BANK":
-				account_dict["bank_account_number"] = account["BankAccountNumber"]
-
-			frappe.get_doc(account_dict).insert()
+				frappe.get_doc(account_dict).insert()
 		except Exception as e:
 			self._log_error(e, account)
 
-	def _make_bank_account_info_fields(self, doctype):
-		frappe.get_doc(
-			{
-				"doctype": "Custom Field",
-				"label": "Bank Account Number",
-				"dt": doctype,
-				"fieldname": "bank_account_number",
-				"fieldtype": "Data",
-			}
-		).insert()
-
-	def _fetch_general_ledger(self):
-		try:
-			query_uri = "{}/company/{}/reports/GeneralLedger".format(
-				self.api_endpoint, self.xero_company_id
-			)
-			response = self._get(
-				query_uri,
-				)
-			self.gl_entries = {}
-			for section in response.json()["Rows"]["Row"]:
-				if section["type"] == "Section":
-					self._get_gl_entries_from_section(section)
-			self.general_ledger = {}
-			for account in self.gl_entries.values():
-				for line in account:
-					type_dict = self.general_ledger.setdefault(line["type"], {})
-					if line["id"] not in type_dict:
-						type_dict[line["id"]] = {
-							"id": line["id"],
-							"date": line["date"],
-							"lines": [],
-						}
-					type_dict[line["id"]]["lines"].append(line)
-		except Exception as e:
-			self._log_error(e, response.text)
-
-	def _create_fiscal_years(self):
-		try:
-			# Assumes that exactly one fiscal year has been created so far
-			# Creates fiscal years till oldest ledger entry date is covered
-			from itertools import chain
-
-			from frappe.utils.data import add_years, getdate
-
-			smallest_ledger_entry_date = getdate(
-				min(entry["date"] for entry in chain(*self.gl_entries.values()) if entry["date"])
-			)
-			oldest_fiscal_year = frappe.get_all(
-				"Fiscal Year", fields=["year_start_date", "year_end_date"], order_by="year_start_date"
-			)[0]
-			# Keep on creating fiscal years
-			# until smallest_ledger_entry_date is no longer smaller than the oldest fiscal year's start date
-			while smallest_ledger_entry_date < oldest_fiscal_year.year_start_date:
-				new_fiscal_year = frappe.get_doc({"doctype": "Fiscal Year"})
-				new_fiscal_year.year_start_date = add_years(oldest_fiscal_year.year_start_date, -1)
-				new_fiscal_year.year_end_date = add_years(oldest_fiscal_year.year_end_date, -1)
-				if new_fiscal_year.year_start_date.year == new_fiscal_year.year_end_date.year:
-					new_fiscal_year.year = new_fiscal_year.year_start_date.year
-				else:
-					new_fiscal_year.year = "{}-{}".format(
-						new_fiscal_year.year_start_date.year, new_fiscal_year.year_end_date.year
-					)
-				new_fiscal_year.save()
-				oldest_fiscal_year = new_fiscal_year
-
-			frappe.db.commit()
-		except Exception as e:
-			self._log_error(e)
-
-	def _migrate_entries_from_gl(self, entity):
-		if entity in self.general_ledger:
-			self._save_entries(entity, self.general_ledger[entity].values())
-
-	def _save_entries(self, entity, entries):
-		entity_method_map = {
-			"Account": self._save_account,
-			"TaxRate": self._save_tax_rate,
-			"TaxCode": self._save_tax_code,
-			"Preferences": self._save_preference,
-			"Customer": self._save_customer,
-			"Item": self._save_item,
-			"Vendor": self._save_vendor,
-			"Invoice": self._save_invoice,
-			"CreditMemo": self._save_credit_memo,
-			"SalesReceipt": self._save_sales_receipt,
-			"RefundReceipt": self._save_refund_receipt,
-			"JournalEntry": self._save_journal_entry,
-			"Bill": self._save_bill,
-			"VendorCredit": self._save_vendor_credit,
-			"Payment": self._save_payment,
-			"BillPayment": self._save_bill_payment,
-			"Purchase": self._save_purchase,
-			"Deposit": self._save_deposit,
-			"Advance Payment": self._save_advance_payment,
-			"Tax Payment": self._save_tax_payment,
-			"Sales Tax Payment": self._save_tax_payment,
-			"Purchase Tax Payment": self._save_tax_payment,
-			"Inventory Qty Adjust": self._save_inventory_qty_adjust,
-		}
-		total = len(entries)
-		for index, entry in enumerate(entries, start=1):
-			self._publish(
-				{
-					"event": "progress",
-					"message": _("Saving {0}").format(entity),
-					"count": index,
-					"total": total,
-				}
-			)
-			entity_method_map[entity](entry)
-		frappe.db.commit()
-
-	def _preprocess_entries(self, entity, entries):
-		entity_method_map = {
-			"Account": self._preprocess_accounts,
-			"TaxRate": self._preprocess_tax_rates,
-			"TaxCode": self._preprocess_tax_codes,
-		}
-		preprocessor = entity_method_map.get(entity)
-		if preprocessor:
-			entries = preprocessor(entries)
-		return entries
-
-	def _get_gl_entries_from_section(self, section, account=None):
-		if "Header" in section:
-			if "id" in section["Header"]["ColData"][0]:
-				account = self._get_account_name_by_id(section["Header"]["ColData"][0]["id"])
-			elif "value" in section["Header"]["ColData"][0] and section["Header"]["ColData"][0]["value"]:
-				# For some reason during migrating UK company, account id is not available.
-				# preprocess_accounts retains name:account mapping in self.accounts
-				# This mapping can then be used to obtain xero_id for correspondong account
-				# Rest is trivial
-
-				# Some Lines in General Leder Report are shown under Not Specified
-				# These should be skipped
-				if section["Header"]["ColData"][0]["value"] == "Not Specified":
-					return
-				account_id = self.accounts[section["Header"]["ColData"][0]["value"]]["Id"]
-				account = self._get_account_name_by_id(account_id)
-		entries = []
-		for row in section["Rows"]["Row"]:
-			if row["type"] == "Data":
-				data = row["ColData"]
-				entries.append(
-					{
-						"account": account,
-						"date": data[0]["value"],
-						"type": data[1]["value"],
-						"id": data[1].get("id"),
-						"credit": frappe.utils.flt(data[2]["value"]),
-						"debit": frappe.utils.flt(data[3]["value"]),
-					}
-				)
-			if row["type"] == "Section":
-				self._get_gl_entries_from_section(row, account)
-		self.gl_entries.setdefault(account, []).extend(entries)
-
-	def _preprocess_accounts(self, accounts):
-		self.accounts = {account["Name"]: account for account in accounts}
-		for account in accounts:
-			if any(acc["SubAccount"] and acc["ParentRef"]["value"] == account["Id"] for acc in accounts):
-				account["is_group"] = 1
-			else:
-				account["is_group"] = 0
-		return sorted(accounts, key=lambda account: int(account["Id"]))
-
+	# done
 	def _get_account_type(self, account):
-		account_subtype_mapping = {"UndepositedFunds": "Cash"}
-		account_type = account_subtype_mapping.get(account.get("AccountSubType"))
-		if account_type is None:
-			account_type_mapping = {
-				"Accounts Payable": "Payable",
-				"Accounts Receivable": "Receivable",
-				"Bank": "Bank",
-				"Credit Card": "Bank",
-			}
-			account_type = account_type_mapping.get(account["AccountType"])
+		account_type = account["Type"]
+
+		# Xero SystemAccountattribute Value: Xero Default Account Name
+		xero_system_account_mapping = {
+			"CREDITORS": "Accounts Payable",
+			"DEBTORS":  "Accounts Receivable",
+		}
+
+		# If Account Name is a General term, use the
+		# name to classify. Or else, use the account type
+		# Xero Account Name: ERPNext Account Type
+		xero_common_account_name_mapping = {
+			"Sales": "Direct Income",
+			"Interest Income": "Income",
+			"Cost of Goods Sold": "Cost of Goods Sold",
+			"Depreciation": "Depreciation",
+			"Accounts Receivable": "Receivable",
+			"Accounts Payable": "Payable"
+		}
+
+		# Xero Account Type: ERPNext Account Type
+		xero_account_type_mapping = {
+			"BANK": "Bank",
+			"CURRENT": "Current Asset",
+			"CURRLIAB": "Current Liability",
+			"DEPRECIATN": "Depreciation",
+			"DIRECTCOSTS": "Direct Expense",
+			"EQUITY": "Equity",
+			"EXPENSE": "Expense Account",
+			"FIXED": "Fixed Asset",
+			"INVENTORY": "Current Asset",
+			"LIABILITY": "Liability",
+			"OTHERINCOME": "Income Account",
+			"OVERHEADS": "Indirect Expense",
+			"PREPAYMENT": "Income Account",
+			"REVENUE": "Direct Income",
+			"SALES": "Direct Income",
+			"TERMLIAB": "Liability",
+			# "NONCURRENT": 
+		}
+
+		xero_account_name = account["Name"]
+		xero_account_type = account["Type"]
+
+		if account["SystemAccount"] in xero_system_account_mapping:
+			account_type = xero_system_account_mapping[account["SystemAccount"]]
+		else:
+			if xero_account_name in xero_common_account_name_mapping:
+				account_type = xero_common_account_name_mapping[xero_account_name]
+			else:
+				account_type = xero_account_type_mapping[xero_account_type]
 		return account_type
-
-	def _preprocess_tax_rates(self, tax_rates):
-		self.tax_rates = {tax_rate["Id"]: tax_rate for tax_rate in tax_rates}
-		return tax_rates
-
+	
+	def _get_account_name_by_id(self, xero_id):
+		return frappe.get_all(
+			"Account", filters={"xero_id": xero_id, "company": self.company}
+		)[0]["name"]
+	
+	def _get_account_name_by_code(self, account_code):
+		return frappe.get_all(
+			"Account", filters={"account_number": account_code, "company": self.company}
+		)[0]["name"]
+	
 	def _save_tax_rate(self, tax_rate):
 		try:
 			if not frappe.db.exists(
 				{
 					"doctype": "Account",
-					"xero_id": "TaxRate - {}".format(tax_rate["Id"]),
+					"xero_id": "TaxRate - {}".format(tax_rate["TaxType"]),
 					"company": self.company,
 				}
 			):
 				frappe.get_doc(
 					{
 						"doctype": "Account",
-						"xero_id": "TaxRate - {}".format(tax_rate["Id"]),
-						"account_name": "{} - Xero".format(tax_rate["Name"]),
+						"xero_id": "TaxRate - {}".format(tax_rate["TaxType"]),
+						"account_name": "{} - QB".format(tax_rate["Name"]),
 						"root_type": "Liability",
-						"parent_account": encode_company_abbr("{} - Xero".format("Liability"), self.company),
+						"parent_account": encode_company_abbr("{} - QB".format("Liability"), self.company),
 						"is_group": "0",
 						"company": self.company,
 					}
@@ -482,24 +468,30 @@ class XeroMigrator(Document):
 		except Exception as e:
 			self._log_error(e, tax_rate)
 
-	def _preprocess_tax_codes(self, tax_codes):
-		self.tax_codes = {tax_code["Id"]: tax_code for tax_code in tax_codes}
-		return tax_codes
+	def _preprocess_tax_rates(self, tax_rates):
+		self.tax_rates = {tax_rate["Type"]: tax_rate for tax_rate in tax_rates}
+		return tax_rates
+	
+	def _save_contact(self, contact):
+		try:
+			if contact["IsCustomer"]:
+				self._save_customer(contact)
+			elif contact["IsSupplier"]:
+				self._save_supplier(contact)
+		except Exception as e:
+			self._log_error(e, contact)
 
-	def _save_tax_code(self, tax_code):
-		pass
-
-	def _save_customer(self, customer):
+	def _save_customer(self, contact):
 		try:
 			if not frappe.db.exists(
-				{"doctype": "Customer", "xero_id": customer["Id"], "company": self.company}
+				{"doctype": "Customer", "xero_id": contact["ContactID"], "company": self.company}
 			):
 				try:
 					receivable_account = frappe.get_all(
 						"Account",
 						filters={
 							"account_type": "Receivable",
-							"account_currency": customer["CurrencyRef"]["value"],
+							"account_currency": contact["DefaultCurrency"],
 							"company": self.company,
 						},
 					)[0]["name"]
@@ -508,724 +500,87 @@ class XeroMigrator(Document):
 				erpcustomer = frappe.get_doc(
 					{
 						"doctype": "Customer",
-						"xero_id": customer["Id"],
-						"customer_name": encode_company_abbr(customer["DisplayName"], self.company),
+						"xero_id": contact["ContactID"],
+						"customer_name": encode_company_abbr(contact["Name"], self.company),
 						"customer_type": "Individual",
 						"customer_group": "Commercial",
-						"default_currency": customer["CurrencyRef"]["value"],
+						"default_currency": contact["DefaultCurrency"],
 						"accounts": [{"company": self.company, "account": receivable_account}],
 						"territory": "All Territories",
 						"company": self.company,
 					}
 				).insert()
-				if "BillAddr" in customer:
-					self._create_address(erpcustomer, "Customer", customer["BillAddr"], "Billing")
-				if "ShipAddr" in customer:
-					self._create_address(erpcustomer, "Customer", customer["ShipAddr"], "Shipping")
+				self._create_address(erpcustomer, "Customer", contact["Addresses"])
 		except Exception as e:
-			self._log_error(e, customer)
+			self._log_error(e, contact)
 
+	def _save_supplier(self, contact):
+		try:
+			if not frappe.db.exists(
+				{"doctype": "Supplier", "xero_id": contact["ContactID"], "company": self.company}
+			):
+				erpsupplier = frappe.get_doc(
+					{
+						"doctype": "Supplier",
+						"xero_id": contact["ContactID"],
+						"supplier_name": encode_company_abbr(contact["Name"], self.company),
+						"supplier_group": "All Supplier Groups",
+						"company": self.company,
+					}
+				).insert()
+				self._create_address(erpsupplier, "Supplier", contact["Addresses"])
+		except Exception as e:
+			self._log_error(e)
+
+	def _create_address(self, entity, doctype, addresses):
+		try:
+			for index, address in enumerate(addresses):
+				if not frappe.db.exists({"doctype": "Address", "xero_id": "{} Address{} - Xero".format(entity.name, index)}):
+					frappe.get_doc(
+						{
+							"doctype": "Address",
+							"xero_id": "{} Address{} - Xero".format(entity.name, index),
+							"address_title": entity.name,
+							"address_type": "Other",
+							"address_line1": address["AddressLine1"],
+							"pincode": address["PostalCode"],
+							"city": address["City"],
+							"links": [{"link_doctype": doctype, "link_name": entity.name}],
+						}
+					).insert()
+		except Exception as e:
+			self._log_error(e, address)
+
+	#xero
 	def _save_item(self, item):
 		try:
 			if not frappe.db.exists(
-				{"doctype": "Item", "xero_id": item["Id"], "company": self.company}
+				{"doctype": "Item", "xero_id": item["ItemID"], "company": self.company}
 			):
 				item_dict = {
 					"doctype": "Item",
 					"xero_id": item["ItemID"],
 					"item_code": item["Code"],
+					"stock_uom": "Unit",
+					"is_stock_item": 0,
 					"item_name": item["Name"],
 					"company": self.company,
-					"stock_uom": "Unit",
-					"taxes": self.get_item_tax(item)
+					"item_group": "All Item Groups",
+					"item_defaults": [{"company": self.company, "default_warehouse": self.default_warehouse}]
 				}
-
-			if item["IsSold"]:
-				item_dict["is_sales_item"] = "1"
-				item_dict["is_purchase_item"] = "0"
-			else:
-				item_dict["is_sales_item"] = "0"
-				item_dict["is_purchase_item"] = "1"
-
+				if "PurchaseDetails" in item:
+					if item["IsTrackedAsInventory"]:
+						account_code = item["PurchaseDetails"]["COGSAccountCode"]
+					else:
+						account_code = item["PurchaseDetails"]["AccountCode"]
+					expense_account = self._get_account_name_by_code(account_code)
+					item_dict["item_defaults"][0]["expense_account"] = expense_account
+				if "SalesDetails" in item:
+					income_account = self._get_account_name_by_code(item["SalesDetails"]["AccountCode"])
+					item_dict["item_defaults"][0]["income_account"] = income_account
+				frappe.get_doc(item_dict).insert()
 		except Exception as e:
 			self._log_error(e, item)
-
-	def _allow_fraction_in_unit(self):
-		frappe.db.set_value("UOM", "Unit", "must_be_whole_number", 0)
-
-	def _save_vendor(self, vendor):
-		try:
-			if not frappe.db.exists(
-				{"doctype": "Supplier", "xero_id": vendor["Id"], "company": self.company}
-			):
-				erpsupplier = frappe.get_doc(
-					{
-						"doctype": "Supplier",
-						"xero_id": vendor["Id"],
-						"supplier_name": encode_company_abbr(vendor["DisplayName"], self.company),
-						"supplier_group": "All Supplier Groups",
-						"company": self.company,
-					}
-				).insert()
-				if "BillAddr" in vendor:
-					self._create_address(erpsupplier, "Supplier", vendor["BillAddr"], "Billing")
-				if "ShipAddr" in vendor:
-					self._create_address(erpsupplier, "Supplier", vendor["ShipAddr"], "Shipping")
-		except Exception as e:
-			self._log_error(e)
-
-	def _save_preference(self, preference):
-		try:
-			if preference["SalesFormsPrefs"]["AllowShipping"]:
-				default_shipping_account_id = preference["SalesFormsPrefs"]["DefaultShippingAccount"]
-				self.default_shipping_account = self._get_account_name_by_id(self, default_shipping_account_id)
-				self.save()
-		except Exception as e:
-			self._log_error(e, preference)
-
-	def _save_invoice(self, invoice):
-		# Invoice can be Linked with Another Transactions
-		# If any of these transactions is a "StatementCharge" or "ReimburseCharge" then in the UI
-		# item list is populated from the corresponding transaction, these items are not shown in api response
-		# Also as of now there is no way of fetching the corresponding transaction from api
-		# We in order to correctly reflect account balance make an equivalent Journal Entry
-		xero_id = "Invoice - {}".format(invoice["Id"])
-		if any(
-			linked["TxnType"] in ("StatementCharge", "ReimburseCharge") for linked in invoice["LinkedTxn"]
-		):
-			self._save_invoice_as_journal_entry(invoice, xero_id)
-		else:
-			self._save_sales_invoice(invoice, xero_id)
-
-	def _save_credit_memo(self, credit_memo):
-		# Credit Memo is equivalent to a return Sales Invoice
-		xero_id = "Credit Memo - {}".format(credit_memo["Id"])
-		self._save_sales_invoice(credit_memo, xero_id, is_return=True)
-
-	def _save_sales_receipt(self, sales_receipt):
-		# Sales Receipt is equivalent to a POS Sales Invoice
-		xero_id = "Sales Receipt - {}".format(sales_receipt["Id"])
-		self._save_sales_invoice(sales_receipt, xero_id, is_pos=True)
-
-	def _save_refund_receipt(self, refund_receipt):
-		# Refund Receipt is equivalent to a return POS Sales Invoice
-		xero_id = "Refund Receipt - {}".format(refund_receipt["Id"])
-		self._save_sales_invoice(refund_receipt, xero_id, is_return=True, is_pos=True)
-
-	def _save_sales_invoice(self, invoice, xero_id, is_return=False, is_pos=False):
-		try:
-			if not frappe.db.exists(
-				{"doctype": "Sales Invoice", "xero_id": xero_id, "company": self.company}
-			):
-				invoice_dict = {
-					"doctype": "Sales Invoice",
-					"xero_id": xero_id,
-					# Xero uses ISO 4217 Code
-					# of course this gonna come back to bite me
-					"currency": invoice["CurrencyRef"]["value"],
-					# Exchange Rate is provided if multicurrency is enabled
-					# It is not provided if multicurrency is not enabled
-					"conversion_rate": invoice.get("ExchangeRate", 1),
-					"posting_date": invoice["TxnDate"],
-					# Xero doesn't make Due Date a mandatory field this is a hack
-					"due_date": invoice.get("DueDate", invoice["TxnDate"]),
-					"customer": frappe.get_all(
-						"Customer",
-						filters={
-							"xero_id": invoice["CustomerRef"]["value"],
-							"company": self.company,
-						},
-					)[0]["name"],
-					"items": self._get_si_items(invoice, is_return=is_return),
-					"taxes": self._get_taxes(invoice),
-					# Do not change posting_date upon submission
-					"set_posting_time": 1,
-					# Xero doesn't round total
-					"disable_rounded_total": 1,
-					"is_return": is_return,
-					"is_pos": is_pos,
-					"payments": self._get_invoice_payments(invoice, is_return=is_return, is_pos=is_pos),
-					"company": self.company,
-				}
-				discount = self._get_discount(invoice["Line"])
-				if discount:
-					if invoice["ApplyTaxAfterDiscount"]:
-						invoice_dict["apply_discount_on"] = "Net Total"
-					else:
-						invoice_dict["apply_discount_on"] = "Grand Total"
-					invoice_dict["discount_amount"] = discount["Amount"]
-
-				invoice_doc = frappe.get_doc(invoice_dict)
-				invoice_doc.insert()
-				invoice_doc.submit()
-		except Exception as e:
-			self._log_error(e, [invoice, invoice_dict, json.loads(invoice_doc.as_json())])
-
-	def _get_item_taxes(self, tax_code):
-		tax_rates = self.tax_rates
-		item_taxes = {}
-		if tax_code != "NON":
-			tax_code = self.tax_codes[tax_code]
-			for rate_list_type in ("SalesTaxRateList", "PurchaseTaxRateList"):
-				if rate_list_type in tax_code:
-					for tax_rate_detail in tax_code[rate_list_type]["TaxRateDetail"]:
-						if tax_rate_detail["TaxTypeApplicable"] == "TaxOnAmount":
-							tax_head = self._get_account_name_by_id(
-								"TaxRate - {}".format(tax_rate_detail["TaxRateRef"]["value"])
-							)
-							tax_rate = tax_rates[tax_rate_detail["TaxRateRef"]["value"]]
-							item_taxes[tax_head] = tax_rate["RateValue"]
-		return item_taxes
-
-	def _get_invoice_payments(self, invoice, is_return=False, is_pos=False):
-		if is_pos:
-			amount = invoice["TotalAmt"]
-			if is_return:
-				amount = -amount
-			return [
-				{
-					"mode_of_payment": "Cash",
-					"account": self._get_account_name_by_id(invoice["DepositToAccountRef"]["value"]),
-					"amount": amount,
-				}
-			]
-
-	def _get_discount(self, lines):
-		for line in lines:
-			if line["DetailType"] == "DiscountLineDetail" and "Amount" in line["DiscountLineDetail"]:
-				return line
-
-	def _save_invoice_as_journal_entry(self, invoice, xero_id):
-		try:
-			accounts = []
-			for line in self.general_ledger["Invoice"][invoice["Id"]]["lines"]:
-				account_line = {"account": line["account"], "cost_center": self.default_cost_center}
-				if line["debit"]:
-					account_line["debit_in_account_currency"] = line["debit"]
-				elif line["credit"]:
-					account_line["credit_in_account_currency"] = line["credit"]
-				if frappe.db.get_value("Account", line["account"], "account_type") == "Receivable":
-					account_line["party_type"] = "Customer"
-					account_line["party"] = frappe.get_all(
-						"Customer",
-						filters={"xero_id": invoice["CustomerRef"]["value"], "company": self.company},
-					)[0]["name"]
-
-				accounts.append(account_line)
-
-			posting_date = invoice["TxnDate"]
-			self.__save_journal_entry(xero_id, accounts, posting_date)
-		except Exception as e:
-			self._log_error(e, [invoice, accounts])
-
-	def _save_journal_entry(self, journal_entry):
-		# JournalEntry is equivalent to a Journal Entry
-
-		def _get_je_accounts(lines):
-			# Converts JounalEntry lines to accounts list
-			posting_type_field_mapping = {
-				"Credit": "credit_in_account_currency",
-				"Debit": "debit_in_account_currency",
-			}
-			accounts = []
-			for line in lines:
-				if line["DetailType"] == "JournalEntryLineDetail":
-					account_name = self._get_account_name_by_id(
-						line["JournalEntryLineDetail"]["AccountRef"]["value"]
-					)
-					posting_type = line["JournalEntryLineDetail"]["PostingType"]
-					accounts.append(
-						{
-							"account": account_name,
-							posting_type_field_mapping[posting_type]: line["Amount"],
-							"cost_center": self.default_cost_center,
-						}
-					)
-			return accounts
-
-		xero_id = "Journal Entry - {}".format(journal_entry["Id"])
-		accounts = _get_je_accounts(journal_entry["Line"])
-		posting_date = journal_entry["TxnDate"]
-		self.__save_journal_entry(xero_id, accounts, posting_date)
-
-	def __save_journal_entry(self, xero_id, accounts, posting_date):
-		try:
-			if not frappe.db.exists(
-				{"doctype": "Journal Entry", "xero_id": xero_id, "company": self.company}
-			):
-				je = frappe.get_doc(
-					{
-						"doctype": "Journal Entry",
-						"xero_id": xero_id,
-						"company": self.company,
-						"posting_date": posting_date,
-						"accounts": accounts,
-						"multi_currency": 1,
-					}
-				)
-				je.insert()
-				je.submit()
-		except Exception as e:
-			self._log_error(e, [accounts, json.loads(je.as_json())])
-
-	def _save_bill(self, bill):
-		# Bill is equivalent to a Purchase Invoice
-		xero_id = "Bill - {}".format(bill["Id"])
-		self.__save_purchase_invoice(bill, xero_id)
-
-	def _save_vendor_credit(self, vendor_credit):
-		# Vendor Credit is equivalent to a return Purchase Invoice
-		xero_id = "Vendor Credit - {}".format(vendor_credit["Id"])
-		self.__save_purchase_invoice(vendor_credit, xero_id, is_return=True)
-
-	def __save_purchase_invoice(self, invoice, xero_id, is_return=False):
-		try:
-			if not frappe.db.exists(
-				{"doctype": "Purchase Invoice", "xero_id": xero_id, "company": self.company}
-			):
-				credit_to_account = self._get_account_name_by_id(invoice["APAccountRef"]["value"])
-				invoice_dict = {
-					"doctype": "Purchase Invoice",
-					"xero_id": xero_id,
-					"currency": invoice["CurrencyRef"]["value"],
-					"conversion_rate": invoice.get("ExchangeRate", 1),
-					"posting_date": invoice["TxnDate"],
-					"due_date": invoice.get("DueDate", invoice["TxnDate"]),
-					"credit_to": credit_to_account,
-					"supplier": frappe.get_all(
-						"Supplier",
-						filters={
-							"xero_id": invoice["VendorRef"]["value"],
-							"company": self.company,
-						},
-					)[0]["name"],
-					"items": self._get_pi_items(invoice, is_return=is_return),
-					"taxes": self._get_taxes(invoice),
-					"set_posting_time": 1,
-					"disable_rounded_total": 1,
-					"is_return": is_return,
-					"udpate_stock": 0,
-					"company": self.company,
-				}
-				invoice_doc = frappe.get_doc(invoice_dict)
-				invoice_doc.insert()
-				invoice_doc.submit()
-		except Exception as e:
-			self._log_error(e, [invoice, invoice_dict, json.loads(invoice_doc.as_json())])
-
-	def _get_pi_items(self, purchase_invoice, is_return=False):
-		items = []
-		for line in purchase_invoice["Line"]:
-			if line["DetailType"] == "ItemBasedExpenseLineDetail":
-				if line["ItemBasedExpenseLineDetail"]["TaxCodeRef"]["value"] != "TAX":
-					tax_code = line["ItemBasedExpenseLineDetail"]["TaxCodeRef"]["value"]
-				else:
-					if "TxnTaxCodeRef" in purchase_invoice["TxnTaxDetail"]:
-						tax_code = purchase_invoice["TxnTaxDetail"]["TxnTaxCodeRef"]["value"]
-					else:
-						tax_code = "NON"
-				item = frappe.db.get_all(
-					"Item",
-					filters={
-						"xero_id": line["ItemBasedExpenseLineDetail"]["ItemRef"]["value"],
-						"company": self.company,
-					},
-					fields=["name", "stock_uom"],
-				)[0]
-				items.append(
-					{
-						"item_code": item["name"],
-						"conversion_factor": 1,
-						"uom": item["stock_uom"],
-						"description": line.get(
-							"Description", line["ItemBasedExpenseLineDetail"]["ItemRef"]["name"]
-						),
-						"qty": line["ItemBasedExpenseLineDetail"]["Qty"],
-						"price_list_rate": line["ItemBasedExpenseLineDetail"]["UnitPrice"],
-						"warehouse": self.default_warehouse,
-						"cost_center": self.default_cost_center,
-						"item_tax_rate": json.dumps(self._get_item_taxes(tax_code)),
-					}
-				)
-			elif line["DetailType"] == "AccountBasedExpenseLineDetail":
-				if line["AccountBasedExpenseLineDetail"]["TaxCodeRef"]["value"] != "TAX":
-					tax_code = line["AccountBasedExpenseLineDetail"]["TaxCodeRef"]["value"]
-				else:
-					if "TxnTaxCodeRef" in purchase_invoice["TxnTaxDetail"]:
-						tax_code = purchase_invoice["TxnTaxDetail"]["TxnTaxCodeRef"]["value"]
-					else:
-						tax_code = "NON"
-				items.append(
-					{
-						"item_name": line.get(
-							"Description", line["AccountBasedExpenseLineDetail"]["AccountRef"]["name"]
-						),
-						"conversion_factor": 1,
-						"expense_account": self._get_account_name_by_id(
-							line["AccountBasedExpenseLineDetail"]["AccountRef"]["value"]
-						),
-						"uom": "Unit",
-						"description": line.get(
-							"Description", line["AccountBasedExpenseLineDetail"]["AccountRef"]["name"]
-						),
-						"qty": 1,
-						"price_list_rate": line["Amount"],
-						"warehouse": self.default_warehouse,
-						"cost_center": self.default_cost_center,
-						"item_tax_rate": json.dumps(self._get_item_taxes(tax_code)),
-					}
-				)
-			if is_return:
-				items[-1]["qty"] *= -1
-		return items
-
-	def _save_payment(self, payment):
-		try:
-			xero_id = "Payment - {}".format(payment["Id"])
-			# If DepositToAccountRef is not set on payment that means it actually doesn't affect any accounts
-			# No need to record such payment
-			# Such payment record is created Xero Payments API
-			if "DepositToAccountRef" not in payment:
-				return
-
-			# A Payment can be linked to multiple transactions
-			accounts = []
-			for line in payment["Line"]:
-				linked_transaction = line["LinkedTxn"][0]
-				if linked_transaction["TxnType"] == "Invoice":
-					si_xero_id = "Invoice - {}".format(linked_transaction["TxnId"])
-					# Invoice could have been saved as a Sales Invoice or a Journal Entry
-					if frappe.db.exists(
-						{"doctype": "Sales Invoice", "xero_id": si_xero_id, "company": self.company}
-					):
-						sales_invoice = frappe.get_all(
-							"Sales Invoice",
-							filters={
-								"xero_id": si_xero_id,
-								"company": self.company,
-							},
-							fields=["name", "customer", "debit_to"],
-						)[0]
-						reference_type = "Sales Invoice"
-						reference_name = sales_invoice["name"]
-						party = sales_invoice["customer"]
-						party_account = sales_invoice["debit_to"]
-
-					if frappe.db.exists(
-						{"doctype": "Journal Entry", "xero_id": si_xero_id, "company": self.company}
-					):
-						journal_entry = frappe.get_doc(
-							"Journal Entry",
-							{
-								"xero_id": si_xero_id,
-								"company": self.company,
-							},
-						)
-						# Invoice saved as a Journal Entry must have party and party_type set on line containing Receivable Account
-						customer_account_line = list(
-							filter(lambda acc: acc.party_type == "Customer", journal_entry.accounts)
-						)[0]
-
-						reference_type = "Journal Entry"
-						reference_name = journal_entry.name
-						party = customer_account_line.party
-						party_account = customer_account_line.account
-
-					accounts.append(
-						{
-							"party_type": "Customer",
-							"party": party,
-							"reference_type": reference_type,
-							"reference_name": reference_name,
-							"account": party_account,
-							"credit_in_account_currency": line["Amount"],
-							"cost_center": self.default_cost_center,
-						}
-					)
-
-			deposit_account = self._get_account_name_by_id(payment["DepositToAccountRef"]["value"])
-			accounts.append(
-				{
-					"account": deposit_account,
-					"debit_in_account_currency": payment["TotalAmt"],
-					"cost_center": self.default_cost_center,
-				}
-			)
-			posting_date = payment["TxnDate"]
-			self.__save_journal_entry(xero_id, accounts, posting_date)
-		except Exception as e:
-			self._log_error(e, [payment, accounts])
-
-	def _save_bill_payment(self, bill_payment):
-		try:
-			xero_id = "BillPayment - {}".format(bill_payment["Id"])
-			# A BillPayment can be linked to multiple transactions
-			accounts = []
-			for line in bill_payment["Line"]:
-				linked_transaction = line["LinkedTxn"][0]
-				if linked_transaction["TxnType"] == "Bill":
-					pi_xero_id = "Bill - {}".format(linked_transaction["TxnId"])
-					if frappe.db.exists(
-						{"doctype": "Purchase Invoice", "xero_id": pi_xero_id, "company": self.company}
-					):
-						purchase_invoice = frappe.get_all(
-							"Purchase Invoice",
-							filters={
-								"xero_id": pi_xero_id,
-								"company": self.company,
-							},
-							fields=["name", "supplier", "credit_to"],
-						)[0]
-						reference_type = "Purchase Invoice"
-						reference_name = purchase_invoice["name"]
-						party = purchase_invoice["supplier"]
-						party_account = purchase_invoice["credit_to"]
-					accounts.append(
-						{
-							"party_type": "Supplier",
-							"party": party,
-							"reference_type": reference_type,
-							"reference_name": reference_name,
-							"account": party_account,
-							"debit_in_account_currency": line["Amount"],
-							"cost_center": self.default_cost_center,
-						}
-					)
-
-			if bill_payment["PayType"] == "Check":
-				bank_account_id = bill_payment["CheckPayment"]["BankAccountRef"]["value"]
-			elif bill_payment["PayType"] == "CreditCard":
-				bank_account_id = bill_payment["CreditCardPayment"]["CCAccountRef"]["value"]
-
-			bank_account = self._get_account_name_by_id(bank_account_id)
-			accounts.append(
-				{
-					"account": bank_account,
-					"credit_in_account_currency": bill_payment["TotalAmt"],
-					"cost_center": self.default_cost_center,
-				}
-			)
-			posting_date = bill_payment["TxnDate"]
-			self.__save_journal_entry(xero_id, accounts, posting_date)
-		except Exception as e:
-			self._log_error(e, [bill_payment, accounts])
-
-	def _save_purchase(self, purchase):
-		try:
-			xero_id = "Purchase - {}".format(purchase["Id"])
-			# Credit Bank Account
-			accounts = [
-				{
-					"account": self._get_account_name_by_id(purchase["AccountRef"]["value"]),
-					"credit_in_account_currency": purchase["TotalAmt"],
-					"cost_center": self.default_cost_center,
-				}
-			]
-
-			# Debit Mentioned Accounts
-			for line in purchase["Line"]:
-				if line["DetailType"] == "AccountBasedExpenseLineDetail":
-					account = self._get_account_name_by_id(
-						line["AccountBasedExpenseLineDetail"]["AccountRef"]["value"]
-					)
-				elif line["DetailType"] == "ItemBasedExpenseLineDetail":
-					account = (
-						frappe.get_doc(
-							"Item",
-							{
-								"xero_id": line["ItemBasedExpenseLineDetail"]["ItemRef"]["value"],
-								"company": self.company,
-							},
-						)
-						.item_defaults[0]
-						.expense_account
-					)
-				accounts.append(
-					{
-						"account": account,
-						"debit_in_account_currency": line["Amount"],
-						"cost_center": self.default_cost_center,
-					}
-				)
-
-			# Debit Tax Accounts
-			if "TxnTaxDetail" in purchase:
-				for line in purchase["TxnTaxDetail"]["TaxLine"]:
-					accounts.append(
-						{
-							"account": self._get_account_name_by_id(
-								"TaxRate - {}".format(line["TaxLineDetail"]["TaxRateRef"]["value"])
-							),
-							"debit_in_account_currency": line["Amount"],
-							"cost_center": self.default_cost_center,
-						}
-					)
-
-			# If purchase["Credit"] is set to be True then it represents a refund
-			if purchase.get("Credit"):
-				for account in accounts:
-					if "debit_in_account_currency" in account:
-						account["credit_in_account_currency"] = account["debit_in_account_currency"]
-						del account["debit_in_account_currency"]
-					else:
-						account["debit_in_account_currency"] = account["credit_in_account_currency"]
-						del account["credit_in_account_currency"]
-
-			posting_date = purchase["TxnDate"]
-			self.__save_journal_entry(xero_id, accounts, posting_date)
-		except Exception as e:
-			self._log_error(e, [purchase, accounts])
-
-	def _save_deposit(self, deposit):
-		try:
-			xero_id = "Deposit - {}".format(deposit["Id"])
-			# Debit Bank Account
-			accounts = [
-				{
-					"account": self._get_account_name_by_id(deposit["DepositToAccountRef"]["value"]),
-					"debit_in_account_currency": deposit["TotalAmt"],
-					"cost_center": self.default_cost_center,
-				}
-			]
-
-			# Credit Mentioned Accounts
-			for line in deposit["Line"]:
-				if "LinkedTxn" in line:
-					accounts.append(
-						{
-							"account": self.undeposited_funds_account,
-							"credit_in_account_currency": line["Amount"],
-							"cost_center": self.default_cost_center,
-						}
-					)
-				else:
-					accounts.append(
-						{
-							"account": self._get_account_name_by_id(line["DepositLineDetail"]["AccountRef"]["value"]),
-							"credit_in_account_currency": line["Amount"],
-							"cost_center": self.default_cost_center,
-						}
-					)
-
-			# Debit Cashback if mentioned
-			if "CashBack" in deposit:
-				accounts.append(
-					{
-						"account": self._get_account_name_by_id(deposit["CashBack"]["AccountRef"]["value"]),
-						"debit_in_account_currency": deposit["CashBack"]["Amount"],
-						"cost_center": self.default_cost_center,
-					}
-				)
-
-			posting_date = deposit["TxnDate"]
-			self.__save_journal_entry(xero_id, accounts, posting_date)
-		except Exception as e:
-			self._log_error(e, [deposit, accounts])
-
-	def _save_advance_payment(self, advance_payment):
-		xero_id = "Advance Payment - {}".format(advance_payment["id"])
-		self.__save_ledger_entry_as_je(advance_payment, xero_id)
-
-	def _save_tax_payment(self, tax_payment):
-		xero_id = "Tax Payment - {}".format(tax_payment["id"])
-		self.__save_ledger_entry_as_je(tax_payment, xero_id)
-
-	def _save_inventory_qty_adjust(self, inventory_qty_adjust):
-		xero_id = "Inventory Qty Adjust - {}".format(inventory_qty_adjust["id"])
-		self.__save_ledger_entry_as_je(inventory_qty_adjust, xero_id)
-
-	def __save_ledger_entry_as_je(self, ledger_entry, xero_id):
-		try:
-			accounts = []
-			for line in ledger_entry["lines"]:
-				account_line = {"account": line["account"], "cost_center": self.default_cost_center}
-				if line["credit"]:
-					account_line["credit_in_account_currency"] = line["credit"]
-				else:
-					account_line["debit_in_account_currency"] = line["debit"]
-				accounts.append(account_line)
-
-			posting_date = ledger_entry["date"]
-			self.__save_journal_entry(xero_id, accounts, posting_date)
-		except Exception as e:
-			self._log_error(e, ledger_entry)
-
-	def _get_taxes(self, entry):
-		taxes = []
-		if "TxnTaxDetail" not in entry or "TaxLine" not in entry["TxnTaxDetail"]:
-			return taxes
-		for line in entry["TxnTaxDetail"]["TaxLine"]:
-			tax_rate = line["TaxLineDetail"]["TaxRateRef"]["value"]
-			account_head = self._get_account_name_by_id("TaxRate - {}".format(tax_rate))
-			tax_type_applicable = self._get_tax_type(tax_rate)
-			if tax_type_applicable == "TaxOnAmount":
-				taxes.append(
-					{
-						"charge_type": "On Net Total",
-						"account_head": account_head,
-						"description": account_head,
-						"cost_center": self.default_cost_center,
-						"rate": 0,
-					}
-				)
-			else:
-				parent_tax_rate = self._get_parent_tax_rate(tax_rate)
-				parent_row_id = self._get_parent_row_id(parent_tax_rate, taxes)
-				taxes.append(
-					{
-						"charge_type": "On Previous Row Amount",
-						"row_id": parent_row_id,
-						"account_head": account_head,
-						"description": account_head,
-						"cost_center": self.default_cost_center,
-						"rate": line["TaxLineDetail"]["TaxPercent"],
-					}
-				)
-		return taxes
-
-	def _get_tax_type(self, tax_rate):
-		for tax_code in self.tax_codes.values():
-			for rate_list_type in ("SalesTaxRateList", "PurchaseTaxRateList"):
-				if rate_list_type in tax_code:
-					for tax_rate_detail in tax_code[rate_list_type]["TaxRateDetail"]:
-						if tax_rate_detail["TaxRateRef"]["value"] == tax_rate:
-							return tax_rate_detail["TaxTypeApplicable"]
-
-	def _get_parent_tax_rate(self, tax_rate):
-		parent = None
-		for tax_code in self.tax_codes.values():
-			for rate_list_type in ("SalesTaxRateList", "PurchaseTaxRateList"):
-				if rate_list_type in tax_code:
-					for tax_rate_detail in tax_code[rate_list_type]["TaxRateDetail"]:
-						if tax_rate_detail["TaxRateRef"]["value"] == tax_rate:
-							parent = tax_rate_detail["TaxOnTaxOrder"]
-					if parent:
-						for tax_rate_detail in tax_code[rate_list_type]["TaxRateDetail"]:
-							if tax_rate_detail["TaxOrder"] == parent:
-								return tax_rate_detail["TaxRateRef"]["value"]
-
-	def _get_parent_row_id(self, tax_rate, taxes):
-		tax_account = self._get_account_name_by_id("TaxRate - {}".format(tax_rate))
-		for index, tax in enumerate(taxes):
-			if tax["account_head"] == tax_account:
-				return index + 1
-
-	def _create_address(self, entity, doctype, address, address_type):
-		try:
-			if not frappe.db.exists({"doctype": "Address", "xero_id": address["Id"]}):
-				frappe.get_doc(
-					{
-						"doctype": "Address",
-						"xero_address_id": address["Id"],
-						"address_title": entity.name,
-						"address_type": address_type,
-						"address_line1": address["Line1"],
-						"city": address["City"],
-						"links": [{"link_doctype": doctype, "link_name": entity.name}],
-					}
-				).insert()
-		except Exception as e:
-			self._log_error(e, address)
 
 	def _get(self, *args, **kwargs):
 		kwargs["headers"] = {
@@ -1242,14 +597,7 @@ class XeroMigrator(Document):
 			response = self._get(*args, **kwargs)
 		return response
 
-	def _get_account_name_by_id(self, xero_id):
-		return frappe.get_all(
-			"Account", filters={"xero_id": xero_id, "company": self.company}
-		)[0]["name"]
-
-	def _publish(self, *args, **kwargs):
-		frappe.publish_realtime("xero_progress_update", *args, **kwargs, user=self.modified_by)
-
+	#xero
 	def _get_unique_account_name(self, xero_name, number=0):
 		if number:
 			xero_account_name = "{} - {} - Xero".format(xero_name, number)
@@ -1264,6 +612,7 @@ class XeroMigrator(Document):
 			unique_account_name = xero_account_name
 		return unique_account_name
 
+	#xero
 	def _log_error(self, execption, data=""):
 		frappe.log_error(
 			title="Xero Migration Error",
@@ -1277,11 +626,13 @@ class XeroMigrator(Document):
 			),
 		)
 
+	#xero
 	def set_indicator(self, status):
 		self.status = status
 		self.save()
 		frappe.db.commit()
 
+	#xero
 	# given an ID:
 	# https://api.xero.com/api.xro/2.0/BankTransactions/{BankTransactionID}
 	def get_bank_transactions(self):
@@ -1299,11 +650,13 @@ class XeroMigrator(Document):
 		except Exception as e:
 			self._log_error(e, response.text)
 
-	def _get_bank_account_number(self, bank_account_details):
-		if bank_account_details:
-			first_account = bank_account_details[0]
-			first_account.get("bank_account_number")
+	# #xero
+	# def _get_bank_account_number(self, bank_account_details):
+	# 	if bank_account_details:
+	# 		first_account = bank_account_details[0]
+	# 		first_account.get("bank_account_number")
 
+	#xero
 	def _get_bank_transaction_line_items(self, bank_transaction_line_items):
 		for line_item in bank_transaction_line_items:
 			frappe.get_doc(
@@ -1315,8 +668,7 @@ class XeroMigrator(Document):
 				}
 			).insert()
 				
-
-
+	#xero
 	def process_bank_transaction(self, bank_transaction):
 		# check bank_account_transaction.py: do we need to clear the payment_entries when the 
 		# transaction has been reconciled?
@@ -1357,6 +709,7 @@ class XeroMigrator(Document):
 			bank_transaction_dict
 		).insert()
 
+	#xero
 	# given an ID:
 	# https://api.xero.com/api.xro/2.0/BankTransfers/{BankTransferID}
 	def get_bank_transfers(self):
@@ -1371,6 +724,7 @@ class XeroMigrator(Document):
 		except Exception as e:
 			self._log_error(e, response.text)
 
+	#xero
 	# given an ID:
 	# https://api.xero.com/api.xro/2.0/BatchPayments/{BatchPaymentID}
 	def get_batch_payments(self):
@@ -1385,6 +739,7 @@ class XeroMigrator(Document):
 		except Exception as e:
 			self._log_error(e, response.text)
 
+	#xero
 	# given an ID:
 	# https://api.xero.com/api.xro/2.0/Invoices/{InvoiceID}
 	def get_invoices(self):
@@ -1396,67 +751,499 @@ class XeroMigrator(Document):
 			invoices = response.json()
 			
 			for invoice in invoices:
-				self._process_invoice(invoice)
+				self._save_invoice(invoice)
 
 		except Exception as e:
 			self._log_error(e, response.text)
 
-	def _process_invoice(self, invoice):
-		invoice_type = invoice["Type"]
-
-		invoice_status_mapping = {
-			"DRAFT": "Draft",
-			"SUBMITTED": "Submitted",
-			"AUTHORISED": "Unpaid",
-			"PAID": "Paid", 
-			"DELETED": "Cancelled",
-			"VOIDED": "Cancelled"
-		}
-
-		invoice_dict = {
-			"xero_id": invoice["InvoiceID"],
-			"company": self.company,
-			"set_posting_time": "1",
-			"posting_date": self.get_date_object(invoice["DateString"]),
-			"posting_time": self.get_time_object(invoice["DateString"]),
-			"due_date": self.get_date_object(invoice["DueDateString"]),
-			"cost_center": self.default_cost_center,
-			"currency": invoice["CurrencyCode"],
-			"status": invoice_status_mapping[invoice["Status"]],
-			"total": invoice["Subtotal"],
-			"total_taxes_and_charges": invoice["TotalTax"],
-			"grand_total": invoice["Total"], 
-			"paid_amount": invoice["AmountPaid"], 
-			"outstanding_amount": invoice["AmountDue"],
-			"items": self.get_si_items(invoice)
-		}	
+	#xero
+	def _save_invoice(self, invoice):
+		xero_id = "Invoice - {}".format(invoice["InvoiceID"])
+		invoice_type = invoice["Type"]	
 
 		if invoice_type == "ACCPAY":
-			invoice_dict["doctype"] = "Purchase Invoice"
-			invoice_dict["supplier_name"] = invoice["Contact"]["Name"]
-		else:
-			invoice_dict["doctype"] = "Sales Invoice"
-			invoice_dict["customer_name"] = invoice["Contact"]["Name"]
-		frappe.get_doc(
-			invoice_dict
-		).insert()	
+			self._save_purchase_invoice(invoice, xero_id)
+		elif invoice_type == "ACCREC":
+			self._save_sales_invoice(invoice, xero_id)
 
-	def get_si_items(self, invoice, is_return=False):
+	def _save_sales_invoice(self, invoice, xero_id, is_return=False, is_pos=False):
+		try:
+			invoice_number = invoice["InvoiceNumber"]
+			if not frappe.db.exists(
+				{"doctype": "Sales Invoice", "xero_id": xero_id, "company": self.company}
+			):
+				invoice_dict = {
+					"doctype": "Sales Invoice",
+					"xero_id": xero_id,
+					"invoice_number": invoice_number,
+					"currency": invoice["CurrencyCode"],
+					"conversion_rate": invoice["CurrencyRate"],
+					"posting_date": self.get_date_object(invoice["DateString"]),
+					"due_date": self.get_date_object(invoice["DueDateString"]),
+					"customer": frappe.get_all(
+						"Customer",
+						filters={
+							"xero_id": invoice["Contact"]["ContactID"],
+							"company": self.company,
+						},
+					)[0]["name"],
+					
+					"is_return": is_return,
+					"items": self._get_si_items(invoice),
+					"taxes": self._get_taxes(invoice),
+
+					"set_posting_time": "1",
+					"disable_rounded_total": 1,
+					"company": self.company,
+				}
+				# when to apply taxes and discounts
+
+				if "Payments" in invoice:
+					invoice_dict["payments"] = self._get_invoice_payments(invoice, is_return=is_return, is_pos=is_pos)
+
+				invoice_doc = frappe.get_doc(invoice_dict)
+				invoice_doc.insert()
+				invoice_doc.submit()
+		except Exception as e:
+			self._log_error
+
+	#xero
+	def _get_si_items(self, invoice, is_return=False):
 		items = []
 		for line_item in invoice["LineItems"]:
-			{
-				"description": line_item["Description"],
-				"qty": line_item["Quantity"],
-				"price_list_rate": line_item["UnitAmount"],
-				"item_code": line_item["ItemCode"],
-				"item_tax_rate": line_item["TaxAmount"],
-			}
+			item = frappe.db.get_all(
+				"Item",
+				filters={
+					"xero_id": line_item["Item"]["ItemID"],
+					"company": self.company,
+				},
+				fields=["name", "code"],
+			)[0]
+			items.append(
+				{
+					"item_name": item["name"],
+					"item_code": item["code"],
+					"conversion_factor": 1,
+					"description": line_item["Description"],
+					"qty": line_item["Quantity"],
+					"price_list_rate": line_item["UnitAmount"],
+					"cost_center": self.default_cost_center,
+					"warehouse": self.default_warehouse,
+					"item_tax_rate": json.dumps(self._get_item_taxes(line_item["TaxType"], line_item["TaxAmount"])),
+					"income_account": self._get_account_name_by_id(line_item["AccountId"])
+				}
+			)
+	
+		if is_return:
+			items[-1]["qty"] *= -1
 		
+		return items
+	
+	def _get_pi_items(self, invoice, is_return=False):
+		items = []
+		for line_item in invoice["LineItems"]:
+			item = frappe.db.get_all(
+				"Item",
+				filters={
+					"xero_id": line_item["Item"]["ItemID"],
+					"company": self.company,
+				},
+				fields=["name", "code"],
+			)[0]
+			items.append(
+				{
+					"item_name": item["name"],
+					"item_code": item["code"],
+					"conversion_factor": 1,
+					"description": line_item["Description"],
+					"qty": line_item["Quantity"],
+					"price_list_rate": line_item["UnitAmount"],
+					"cost_center": self.default_cost_center,
+					"warehouse": self.default_warehouse,
+					"item_tax_rate": json.dumps(self._get_item_taxes(line_item["TaxType"], line_item["TaxAmount"])),
+					"expense_account": self._get_account_name_by_id(line_item["AccountId"])
+				}
+			)
 		if is_return:
 			items[-1]["qty"] *= -1
 		
 		return items
 
+	
+	def _save_purchase_invoice(self, invoice, xero_id, is_return=False, is_pos=False):
+		try:
+			invoice_number = invoice["InvoiceNumber"]
+			if not frappe.db.exists(
+				{"doctype": "Purchase Invoice", "xero_id": xero_id, "company": self.company}
+			):
+				invoice_dict = {
+					"doctype": "Purchase Invoice",
+					"xero_id": xero_id,
+					"invoice_number": invoice_number,
+					"currency": invoice["CurrencyCode"],
+					"conversion_rate": invoice["CurrencyRate"],
+					"posting_date": self.get_date_object(invoice["DateString"]),
+					"due_date": self.get_date_object(invoice["DueDateString"]),
+					"customer": frappe.get_all(
+						"Supplier",
+						filters={
+							"xero_id": invoice["Contact"]["ContactID"],
+							"company": self.company,
+						},
+					)[0]["name"],
+						
+					"items": self._get_pi_items(invoice),
+					"taxes": self._get_taxes(invoice),
+					"payments": self._get_invoice_payments(invoice, is_return=is_return, is_pos=is_pos),
+
+					"set_posting_time": "1",
+					"disable_rounded_total": 1,
+					"company": self.company,
+				}
+				# when to apply taxes and discounts
+				invoice_doc = frappe.get_doc(invoice_dict)
+				invoice_doc.insert()
+				invoice_doc.submit()
+		except Exception as e:
+			self._log_error
+	
+	def _get_item_taxes(self, tax_type, tax_amount):
+		item_taxes = {}
+		if tax_type != "NONE":
+			tax_head = self._get_account_name_by_id("TaxRate - {}".format(tax_type))
+			tax_rate = tax_amount
+			item_taxes[tax_head] = tax_rate["RateValue"]
+		return item_taxes
+
+	def _get_taxes(self, entry):
+		taxes = []
+		for line_item in entry["LineItems"]:
+			account_head = self._get_account_name_by_id("TaxRate - {}".format(line_item["TaxType"]))
+			taxes.append(
+				{
+					"charge_type": "Actual",
+					"account_head": account_head,
+					"description": account_head,
+					"cost_center": self.default_cost_center,
+					"amount": line_item["TaxAmount"],
+				}
+			)
+
+	def _get_invoice_payments(self, invoice, is_return=False, is_pos=False):
+		# to get payments first
+		if is_pos:
+			amount = invoice["AmountPaid"]
+			if is_return:
+				amount = -amount
+			return [
+				{
+					"mode_of_payment": "Cash",
+					"amount": amount,
+				}
+			]
+
+	def _save_manual_journal(self, manual_journal):
+		# JournalEntry is equivalent to a Journal Entry
+		def _get_je_accounts(lines):
+			# Converts JounalEntry lines to accounts list
+			posting_type_field_mapping = {
+				"Credit": "credit_in_account_currency",
+				"Debit": "debit_in_account_currency",
+			}
+
+			line_amount_abs_value = abs(line["LineAmount"])
+
+			accounts = []
+			for line in lines:
+				account_name = self._get_account_name_by_code(
+					line["AccountCode"]
+				)
+
+				if line["LineAmount"] > 0:
+					posting_type = "Debit"
+				elif line["LineAmount"] < 0:
+					posting_type = "Credit"
+
+				accounts.append(
+					{
+						"account": account_name,
+						posting_type_field_mapping[posting_type]: line_amount_abs_value,
+						"cost_center": self.default_cost_center,
+					}
+				)
+			return accounts
+		
+		xero_id = "Journal Entry - {}".format(manual_journal["ManualJournalID"])
+		accounts = _get_je_accounts(manual_journal["JournalLines"])
+		posting_date = self.json_date_parser(manual_journal["Date"])
+		self.__save_journal_entry(xero_id, accounts, posting_date)
+
+	def __save_journal_entry(self, xero_id, accounts, posting_date):
+		try:
+			if not frappe.db.exists(
+				{"doctype": "Journal Entry", "xero_id": xero_id, "company": self.company}
+			):
+				je = frappe.get_doc(
+					{
+						"doctype": "Journal Entry",
+						"quickbooks_id": xero_id,
+						"company": self.company,
+						"posting_date": posting_date,
+						"accounts": accounts,
+						"multi_currency": 1,
+					}
+				)
+				je.insert()
+				je.submit()
+		except Exception as e:
+			self._log_error(e, [accounts, json.loads(je.as_json())])
+	
+	def _save_bank_transaction(self, bank_transaction):
+		try:
+			xero_bank_transaction_status_mapping = {
+				"Authorised": "Settled",
+				"Deleted": "Cancelled"
+			}
+
+			if bank_transaction["IsReconciled"] == "true" and bank_transaction["Status"] == "Authorised":
+				status = "Reconciled"
+			elif bank_transaction["IsReconciled"] == "false" and bank_transaction["Status"] == "Authorised":
+				status = "Unreconciled"
+			elif bank_transaction["Status"] == "Cancelled":
+				status = "Cancelled"
+
+			field_for_transaction_amount_mapping = {
+				"RECEIVE": "Deposit",
+				"SPEND": "Withdrawal"
+			}
+
+			if bank_transaction["Type"].find('RECEIVE') != -1:
+				field_type = field_for_transaction_amount_mapping["RECEIVE"]
+			else:
+				field_type = field_for_transaction_amount_mapping["DEPOSIT"]
+
+			xero_id = "Bank Transaction - {}".format(bank_transaction["BankTransactionID"])
+			payment_entries = []
+
+			if not frappe.db.exists(
+				{"doctype": "Bank Transaction", "xero_id": bank_transaction["BankTransactionID"], "company": self.company}
+			):
+				bank_transaction_dict = {
+					"doctype": "Bank Transaction",
+					"xero_id": xero_id,
+					"status": status,
+					"transaction_id": bank_transaction["BankTransactionID"],
+					"transaction_type": bank_transaction["Type"],
+					field_type: bank_transaction["Total"],
+					"company": self.company,
+					"date": bank_transaction["DateString"],
+					"bank_account": bank_transaction["BankAccount"]["Name"],
+					"currency": bank_transaction["CurrencyCode"],
+					"reference_number": bank_transaction["Reference"],
+					"allocated_amount": bank_transaction["Total"],
+				}
+
+			if "BatchPayment" in bank_transaction:
+				
+				bank_transaction_dict["payment_entries"] = payment_entries
+
+			frappe.get_doc(bank_transaction_dict).insert()
+
+		except Exception as e:
+			self._log_error(e, bank_transaction)
+
+	def _save_payment(self, payment):
+		try:
+			invoice_id = payment["Invoice"]["InvoiceID"]
+
+			payment_type_mapping = {
+				"ACCRECPAYMENT": "Receive",
+				"ACCRECPAYMENT": "Pay",
+				"ARCREDITPAYMENT": "Pay",
+				"APCREDITPAYMENT": "Receive Refund",
+				"AROVERPAYMENTPAYMENT": "Pay Refund",
+				"ARPREPAYMENTPAYMENT": "Pay Refund",
+				"APPREPAYMENTPAYMENT": "Receive Refund",
+				"APOVERPAYMENTPAYMENT": "Receive Refund"
+			}
+			payment_type = payment_type_mapping[payment["PaymentType"]]
+			if payment_type == "Receive":
+				self._save_sales_invoice_payment(payment_type, invoice_id, payment)
+			elif payment_type == "Pay":
+				self._save_purchase_invoice_payment(payment_type, invoice_id, payment)
+		except Exception as e:
+			self._log_error(e, payment)
+
+	def _save_sales_invoice_payment(self, payment_type, invoice_id, payment):
+		if frappe.db.exists(
+			{"doctype": "Sales Invoice", "xero_id": invoice_id, "company": self.company}
+		):
+			invoice = frappe.get_all(
+				"Sales Invoice",
+				filters={
+					"xero_id": invoice_id,
+					"company": self.company,
+				},
+				fields=["name", "customer", "debit_to"],
+			)[0]
+			reference_doctype = "Sales Invoice"
+			self._save_payment_entry(payment_type, reference_doctype, invoice, payment)
+
+	def _save_purchase_invoice_payment(self, payment_type, invoice_id, payment):		
+		if frappe.db.exists(
+			{"doctype": "Sales Invoice", "xero_id": invoice_id, "company": self.company}
+		):
+			invoice = frappe.get_all(
+				"Purchase Invoice",
+				filters={
+					"xero_id": invoice_id,
+					"company": self.company,
+				},
+				fields=["name", "customer", "credit_to"],
+			)[0]
+			reference_doctype = "Purchase Invoice"
+			self._save_payment_entry(payment_type, reference_doctype, invoice, payment)
+	
+	def _save_payment_entry(self, payment_type, reference_doctype, invoice, payment):	
+		if not frappe.db.exists(
+			{"doctype": "Payment Entry", "xero_id":  payment["PaymentID"], "company": self.company}
+		):
+			references = []
+			references.append({
+				"reference_doctype": reference_doctype,
+				"reference_name": invoice["InvoiceNumber"],
+				"total_amount": invoice["Total"]
+			})
+			
+			frappe.get_doc({
+				"doctype": "Payment Entry",
+				"xero_id": payment["PaymentID"],
+				"payment_type": payment_type,
+				"paid_from": self._get_account_name_by_id(payment["Account"]["AccountID"]), 
+				"paid_to": self._get_account_name_by_id(invoice["LineItems"][0]["AccountId"]), 
+				"paid_amount": payment["Total"], 
+				"total_taxes_and_charges": payment["TotalTax"],
+				"references": references
+			})
+	
+	def _save_credit_note(self, credit_note):
+		if credit_note["Type"] == "ACCRECCREDIT":
+			self._save_sales_invoice_credit_note(credit_note, is_return=True)
+		elif credit_note["Type"] == "ACCPAYCREDIT":
+			self._save_purchase_invoice_credit_note(credit_note, is_return=True)
+	
+	def _save_sales_invoice_credit_note(self, credit_note, is_return):
+		try:
+			for allocation in credit_note["Allocations"]:	
+				sales_invoice = frappe.get_all(
+					"Sales Invoice",
+					filters={
+						"xero_id": allocation["CustomerRef"]["InvoiceID"],
+						"company": self.company,
+					},
+				)[0],
+			if not frappe.db.exists(
+				{"doctype": "Sales Invoice", "xero_id": credit_note["CreditNoteID"], "company": self.company}
+			):
+				invoice_dict = {
+					"doctype": "Sales Invoice",
+					"xero_id": credit_note["CreditNoteID"],
+					"is_return": is_return,
+					"return_against": sales_invoice["name"]
+				}
+				invoice_doc = frappe.get_doc(invoice_dict)
+				invoice_doc.insert()
+				invoice_doc.submit()
+		except Exception as e:
+			self._log_error(e, credit_note)
+
+	def _save_purchase_invoice_credit_note(self, credit_note, is_return):
+		try:
+			for allocation in credit_note["Allocations"]:	
+				purchase_invoice = frappe.get_all(
+					"Purchase Invoice",
+					filters={
+						"xero_id": allocation["CustomerRef"]["InvoiceID"],
+						"company": self.company,
+					},
+				)[0],
+			if not frappe.db.exists(
+				{"doctype": "Purchase Invoice", "xero_id": credit_note["CreditNoteID"], "company": self.company}
+			):
+				invoice_dict = {
+					"doctype": "Purchase Invoice",
+					"xero_id": credit_note["CreditNoteID"],
+					"is_return": is_return,
+					"return_against": purchase_invoice["name"]
+				}
+				invoice_doc = frappe.get_doc(invoice_dict)
+				invoice_doc.insert()
+				invoice_doc.submit()
+		except Exception as e:
+			self._log_error(e, credit_note)
+
+	def _create_bank_account(self, account):
+		try:
+
+			if frappe.db.exists(
+				{"doctype": "Bank", "xero_id":  account["AccountID"], "company": self.company}
+			):
+				bank = frappe.get_all(
+					"Bank",
+					filters={
+						"name": account["Name"],
+						"company": self.company,
+					},
+					fields=["name", "customer", "debit_to"],
+				)[0]
+			else:
+				bank = self._create_bank(account["Name"])
+		
+
+			if not frappe.db.exists(
+				{"doctype": "Bank Account", "xero_id": account["AccountID"], "company": self.company}
+			):
+				frappe.get_doc({
+					"doctype": "Bank Account",
+					"xero_id": account["AccountID"],
+					"account_name": bank["name"],
+					"account_type": account["BankAccountType"],
+					"bank_account_no": account["BankAccountNumber"],
+				}).insert()
+				
+		except Exception as e:
+			self._log_error(e, account)
+			
+	def _create_bank(self, bank):
+		try:
+			if not frappe.db.exists(
+				{"doctype": "Bank", "name": bank, "company": self.company}
+			):
+				frappe.get_doc({
+					"doctype": "Bank",
+					"bank_name": bank,	
+				}).insert()
+		except Exception as e:
+			self._log_error(e, bank)
+
+	def _save_asset(self, asset):
+		try:
+			if asset["assetStatus"] == "REGISTERED":
+				if not frappe.db.exists(
+					{"doctype": "Asset", "xero_id": asset["assetId"], "company": self.company}
+				):
+					frappe.get_doc({
+						"doctype": "Asset",
+						"xero_id": asset["assetId"],
+						"item_code": self._get_asset_item_code(asset["assetNumber"]),
+						"is_existing_asset": 1,
+						"gross_purchase_amount": asset["purchasePrice"],
+						"purchase_date": asset["purchaseDate"]
+					})
+		except Exception as e:
+			self._log_error(e, asset)
+
+	#xero
 	# given an ID:
 	# https://api.xero.com/api.xro/2.0/Items/{ItemID}
 	def get_items(self):
@@ -1473,6 +1260,7 @@ class XeroMigrator(Document):
 		except Exception as e:
 			self._log_error(e, response.text)
 
+	#xero
 	# given an ID:
 	# https://api.xero.com/api.xro/2.0/ManualJournals/{JournalID}
 	# In ERPNext, Journal Entries correspond to Journals/Manual Journals in Xero
@@ -1515,6 +1303,7 @@ class XeroMigrator(Document):
 				"accounts":  self.get_journal_entry_accounts(entry["JournalLines"])
 			}
 	
+	#xero
 	def get_journal_entry_accounts(self, journal_lines):
 		journal_entry_accounts = []
 
@@ -1533,35 +1322,8 @@ class XeroMigrator(Document):
 			journal_entry_accounts.append(journal_line_dict)
 
 		return journal_entry_accounts
-	
-	# given an ID:
-	# https://api.xero.com/api.xro/2.0/Payments/{PaymentID}
-	def get_payments(self):
-		try:
-			query_uri = "{}/Payments".format(
-				self.api_endpoint
-			)
-			response = self._get(query_uri)
-			response_string = response.json()
 
-			return response_string
-		except Exception as e:
-			self._log_error(e, response.text)
-
-	# given an ID:
-	# https://api.xero.com/api.xro/2.0/Receipts/{ReceiptID}
-	def get_receipts(self):
-		try:
-			query_uri = "{}/Receipts".format(
-				self.api_endpoint
-			)
-			response = self._get(query_uri)
-			response_string = response.json()
-
-			return response_string
-		except Exception as e:
-			self._log_error(e, response.text)
-
+	#xero
 	# given an ID:
 	# https://api.xero.com/api.xro/2.0/TaxRates/{TaxRateID}
 	def get_tax_rates(self):
@@ -1576,6 +1338,7 @@ class XeroMigrator(Document):
 		except Exception as e:
 			self._log_error(e, response.text)
 
+	#xero
 	# given an ID:
 	# https://api.xero.com/api.xro/2.0/Users/{UserID}
 	def get_users(self):
@@ -1590,22 +1353,26 @@ class XeroMigrator(Document):
 		except Exception as e:
 			self._log_error(e, response.text)
 
+	#xero
 	def get_date_from_timestamp(self, timestamp_string):
 		timestamp = int(timestamp_string.split('(')[1].split('+')[0])
 		date_object = datetime.utcfromtimestamp(timestamp / 1000.0)
 
 		date_object.date().strftime("%m-%d-%Y")
 
+	#xero
 	def get_date_object(self, date_time_string):
 		date_time_object = self.date_and_time_parser(self, date_time_string)
 		extracted_date = date_time_object.date()
 
 		extracted_date.strftime("%m-%d-%Y")
 
+	#xero
 	def get_time_object(self, date_time_string):
 		date_time_object = date_time_string.date()
 		date_time_object.time()
 
+	#xero
 	def date_and_time_parser(self, date_time_string):
 		date_time_string = "2009-05-27 00:00:00"
 
@@ -1615,7 +1382,20 @@ class XeroMigrator(Document):
 		except ValueError:
 			# If parsing fails, the string does not match the specified format
 			pass
+
+	def json_date_parser(self, json_date):
+		milliseconds = int(json_date[7:20])
+		seconds = milliseconds / 1000.0
+		date_object = datetime.utcfromtimestamp(seconds)
+
+		timezone_offset = int(json_date[20:24]) * 60
+		date_object = date_object - timedelta(minutes=timezone_offset)
+
+		formatted_date = date_object.strftime("%Y-%m-%d")
+
+		return formatted_date
 	
+	#xero
 	def get_assets(self):
 		try:
 			query_uri = "https://api.xero.com/assets.xro/1.0/Assets"
@@ -1628,6 +1408,7 @@ class XeroMigrator(Document):
 		except Exception as e:
 			self._log_error(e, response.text)
 
+	#xero
 	def _process_assets(self, asset):
 		asset_status_mapping = {
 			"DRAFT": "Draft",
@@ -1651,3 +1432,4 @@ class XeroMigrator(Document):
 		).insert()
 
 
+# Do we indicate the taxes directly in the Accounts? oir in the TaxRates
