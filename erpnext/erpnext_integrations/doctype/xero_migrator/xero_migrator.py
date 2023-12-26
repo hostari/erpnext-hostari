@@ -582,6 +582,78 @@ class XeroMigrator(Document):
 		except Exception as e:
 			self._log_error(e, item)
 
+	def _save_asset(self, asset):
+		try:
+			if not frappe.db.exists(
+				{"doctype": "Asset", "xero_id": asset["assetId"], "company": self.company}
+			):
+				depreciation_rate = asset["depreciationRate"]
+				purchase_price = asset["purchasePrice"]
+				total_number_of_depreciations = 1/depreciation_rate
+
+				depreciation_method_mapping = {
+					"NoDepreciation": "None",
+					"StraightLine": "Straight Line",
+					"DiminishingValue100": "Manual",
+					"DiminishingValue150": "Manual",
+					"DiminishingValue200": "Manual",
+					"FullDepreciation": "Full Depreciation"
+				}
+
+				finance_books = []
+				finance_books.append({
+					"total_number_of_depreciations": total_number_of_depreciations,
+					"frequency_of_depreciation": 12,
+					"depreciation_posting_date": asset["bookDepreciationDetail"]["depreciationStartDate"]
+				})
+
+				if asset["assetStatus"] == "Registered":
+					asset_dict = {
+						"doctype": "Asset",
+						"item": self._get_asset_item(asset),
+						"is_existing_asset": 1,
+						"available_for_use_date": asset["bookDepreciationDetail"]["depreciationStartDate"],
+						"gross_purchase_amount": purchase_price,
+						"location": self.company,
+						"purchase_date": asset["purchaseDate"],
+					}
+
+					if not depreciation_method_mapping["bookDepreciationSetting"]["depreciationMethod"] == "None":
+						if depreciation_method_mapping["bookDepreciationSetting"]["depreciationMethod"] == "Full Depreciation":
+							asset_dict["is_fully_depreciated"] = 1
+						else:
+							asset_dict["calculate_depreciation"] = 1
+							asset_dict["finance_books"] = finance_books
+					
+					frappe.get_doc().insert(asset_dict)
+
+		except Exception as e:
+			self._log_error(e, asset)
+		
+	def _get_asset_item(self, asset):
+		try:
+			if not frappe.db.exists(
+				{"doctype": "Item", "item_name": asset["assetName"], "company": self.company}
+			):
+				item_dict = {
+					"doctype": "Item",
+					"xero_id": asset["AssetID"],
+					"item_code": asset["assetNumber"],
+					"stock_uom": "Unit",
+					"is_stock_item": 0,
+					"item_name": asset["assetName"],
+					"company": self.company,
+					"item_group": "All Item Groups",
+					"item_defaults": [{"company": self.company, "default_warehouse": self.default_warehouse}]
+				}
+				asset = frappe.get_doc(item_dict).insert()
+
+				asset["item_name"]
+			else:
+				frappe.get_all("Item", filters={"item_name": asset["assetName"], "company": self.company})[0]["item_name"]
+		except Exception as e:
+			self._log_error(e, asset)
+
 	def _get(self, *args, **kwargs):
 		kwargs["headers"] = {
 			"Accept": "application/json",
@@ -1000,11 +1072,6 @@ class XeroMigrator(Document):
 	
 	def _save_bank_transaction(self, bank_transaction):
 		try:
-			xero_bank_transaction_status_mapping = {
-				"Authorised": "Settled",
-				"Deleted": "Cancelled"
-			}
-
 			if bank_transaction["IsReconciled"] == "true" and bank_transaction["Status"] == "Authorised":
 				status = "Reconciled"
 			elif bank_transaction["IsReconciled"] == "false" and bank_transaction["Status"] == "Authorised":
@@ -1091,7 +1158,7 @@ class XeroMigrator(Document):
 
 	def _save_purchase_invoice_payment(self, payment_type, invoice_id, payment):		
 		if frappe.db.exists(
-			{"doctype": "Sales Invoice", "xero_id": invoice_id, "company": self.company}
+			{"doctype": "Purchase Invoice", "xero_id": invoice_id, "company": self.company}
 		):
 			invoice = frappe.get_all(
 				"Purchase Invoice",
