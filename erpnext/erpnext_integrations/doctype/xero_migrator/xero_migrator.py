@@ -62,6 +62,24 @@ class XeroMigrator(Document):
 
 			self._migrate_accounts()
 
+			entities_for_normal_transform = [
+				"Account",
+				"TaxRate",
+				"Contact",
+				"Item",
+				"Invoice",
+				"Payment",
+				"CreditNote",
+				"ManualJournal",
+				"BankTransaction",
+				"Asset"
+			]
+
+			for entity in entities_for_normal_transform:
+				self._migrate_entries(entity)
+
+			self.set_indicator("Complete")
+
 			#-----------------------------------------------------------------	
 			self.get_accounts() # done
 			self.get_bank_transactions() # payment entries skipped
@@ -103,7 +121,6 @@ class XeroMigrator(Document):
 		self.refresh_token = token["refresh_token"]
 		self.save()
 	
-	#xero
 	def get_tenant_id(self, **kwargs):
 		try:
 			query_uri = "https://api.xero.com/connections"
@@ -114,7 +131,6 @@ class XeroMigrator(Document):
 		except Exception as e:
 			self._log_error(e, response.text)
 
-	# done
 	def _make_custom_fields(self):
 		doctypes_for_xero_id_field = [
 			"Account",
@@ -135,22 +151,12 @@ class XeroMigrator(Document):
 		for doctype in doctypes_for_company_field:
 			self._make_custom_company_field(doctype)
 
-		doctypes_for_bank_transaction_payment_entries_field = ["Bank Transaction"]
-		for doctype in doctypes_for_bank_transaction_payment_entries_field:
-			self._make_bank_account_payment_entries(doctype)
-
 		doctypes_for_invoice_number_fields = ["Sales Invoice", "Purchase Invoice"]
 		for doctype in doctypes_for_invoice_number_fields:
 			self._make_invoice_number_field(doctype)
 
 		frappe.db.commit()
 
-	#xero
-	def _make_bank_account_payment_entries(self, doctype):
-		pass
-		# skip for now
-
-	# done
 	def _make_custom_xero_id_field(self, doctype):
 		if not frappe.get_meta(doctype).has_field("xero_id"):
 			frappe.get_doc(
@@ -163,7 +169,6 @@ class XeroMigrator(Document):
 				}
 			).insert()
 
-	# done
 	def _make_custom_company_field(self, doctype):
 		if not frappe.get_meta(doctype).has_field("company"):
 			frappe.get_doc(
@@ -223,19 +228,65 @@ class XeroMigrator(Document):
 
 	def _migrate_entries(self, entity):
 		try:
+			pluralized_entity_name = "{}s"
 			if entity == "Asset":
 				query_uri = "https://api.xero.com/assets.xro/1.0/Assets"
 			else:
 				query_uri = "{}/{}".format(
 					self.api_endpoint,
-					entity,
+					pluralized_entity_name,
 				)
 			# Count number of entries
 			# fetch pages and accumulate
 				
-			entries = self._preprocess_entries(entity, entries)
-			self._save_entries(entity, entries)
+			entities_for_pagination = {
+				"Account": False,
+				"TaxRate": False,
+				"Contact": True,
+				"Item": False,
+				"Invoice": True,
+				"Payment": True,
+				"CreditNote": True,
+				"ManualJournal": True,
+				"BankTransaction": True,
+				"Asset": True
+			}
 
+			if entities_for_pagination[entity] == True:
+				pages = [1]
+
+				initial_response = self._get(f"{query_uri}?page={pages[0]}").json()
+				initial_entity_key = initial_response.get(pluralized_entity_name)
+
+				if initial_entity_key and len(initial_response[pluralized_entity_name]) != 0:
+					while pages:
+						page = pages.pop(0)  # Get the first page from the list
+
+						# Retrieve data for the current page
+						response = self._get(f"{query_uri}?page={page}").json()
+						entity_key = response.get(pluralized_entity_name)
+
+						if entity_key and len(response[pluralized_entity_name]) != 0:
+							next_page = page + 1
+							uri_string = f"{query_uri}?page={next_page}"
+
+							# Retrieve data for the next page
+							content = self._get(uri_string).json()
+
+							# Preprocess and save entries
+							self._preprocess_entries(entity, content)
+							self._save_entries(entity, content)
+
+							# Append the next page to pages
+							pages.append(next_page)
+
+			else:
+				response = self._get(uri_string)
+				content = response.json()
+
+				self._preprocess_entries(entity, content)
+				self._save_entries(entity, content)
+				
 		except Exception as e:
 			self._log_error(e, response.text)
 
@@ -458,9 +509,9 @@ class XeroMigrator(Document):
 					{
 						"doctype": "Account",
 						"xero_id": "TaxRate - {}".format(tax_rate["TaxType"]),
-						"account_name": "{} - QB".format(tax_rate["Name"]),
+						"account_name": "{} - Xero".format(tax_rate["Name"]),
 						"root_type": "Liability",
-						"parent_account": encode_company_abbr("{} - QB".format("Liability"), self.company),
+						"parent_account": encode_company_abbr("{} - Xero".format("Liability"), self.company),
 						"is_group": "0",
 						"company": self.company,
 					}
@@ -560,10 +611,10 @@ class XeroMigrator(Document):
 				item_dict = {
 					"doctype": "Item",
 					"xero_id": item["ItemID"],
-					"item_code": item["Code"],
+					"item_code":encode_company_abbr(item["Code"], self.company),
 					"stock_uom": "Unit",
 					"is_stock_item": 0,
-					"item_name": item["Name"],
+					"item_name": encode_company_abbr(item["Name"], self.company),
 					"company": self.company,
 					"item_group": "All Item Groups",
 					"item_defaults": [{"company": self.company, "default_warehouse": self.default_warehouse}]
@@ -861,6 +912,7 @@ class XeroMigrator(Document):
 					)[0]["name"],
 					
 					"is_return": is_return,
+					"is_pos": is_pos,
 					"items": self._get_si_items(invoice),
 					"taxes": self._get_taxes(invoice),
 
@@ -871,7 +923,7 @@ class XeroMigrator(Document):
 				# when to apply taxes and discounts
 
 				if "Payments" in invoice:
-					invoice_dict["payments"] = self._get_invoice_payments(invoice, is_return=is_return, is_pos=is_pos)
+					invoice_dict["payments"] = self._get_invoice_payments(invoice, is_return=False, is_pos=True)
 
 				invoice_doc = frappe.get_doc(invoice_dict)
 				invoice_doc.insert()
@@ -1058,7 +1110,7 @@ class XeroMigrator(Document):
 				je = frappe.get_doc(
 					{
 						"doctype": "Journal Entry",
-						"quickbooks_id": xero_id,
+						"xero_id": xero_id,
 						"company": self.company,
 						"posting_date": posting_date,
 						"accounts": accounts,
@@ -1195,11 +1247,11 @@ class XeroMigrator(Document):
 	
 	def _save_credit_note(self, credit_note):
 		if credit_note["Type"] == "ACCRECCREDIT":
-			self._save_sales_invoice_credit_note(credit_note, is_return=True)
+			self._save_sales_invoice_credit_note(credit_note)
 		elif credit_note["Type"] == "ACCPAYCREDIT":
-			self._save_purchase_invoice_credit_note(credit_note, is_return=True)
+			self._save_purchase_invoice_credit_note(credit_note)
 	
-	def _save_sales_invoice_credit_note(self, credit_note, is_return):
+	def _save_sales_invoice_credit_note(self, credit_note, is_return=True, is_pos=False):
 		try:
 			for allocation in credit_note["Allocations"]:	
 				sales_invoice = frappe.get_all(
@@ -1216,6 +1268,7 @@ class XeroMigrator(Document):
 					"doctype": "Sales Invoice",
 					"xero_id": credit_note["CreditNoteID"],
 					"is_return": is_return,
+					"is_pos": is_pos,
 					"return_against": sales_invoice["name"]
 				}
 				invoice_doc = frappe.get_doc(invoice_dict)
@@ -1224,7 +1277,7 @@ class XeroMigrator(Document):
 		except Exception as e:
 			self._log_error(e, credit_note)
 
-	def _save_purchase_invoice_credit_note(self, credit_note, is_return):
+	def _save_purchase_invoice_credit_note(self, credit_note, is_return=True, is_pos=False):
 		try:
 			for allocation in credit_note["Allocations"]:	
 				purchase_invoice = frappe.get_all(
@@ -1241,6 +1294,7 @@ class XeroMigrator(Document):
 					"doctype": "Purchase Invoice",
 					"xero_id": credit_note["CreditNoteID"],
 					"is_return": is_return,
+					"is_pos": is_pos,
 					"return_against": purchase_invoice["name"]
 				}
 				invoice_doc = frappe.get_doc(invoice_dict)
@@ -1497,6 +1551,3 @@ class XeroMigrator(Document):
 		frappe.get_doc(
 			asset_dict
 		).insert()
-
-
-# Do we indicate the taxes directly in the Accounts? oir in the TaxRates
