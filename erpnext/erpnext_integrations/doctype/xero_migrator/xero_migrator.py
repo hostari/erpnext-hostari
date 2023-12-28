@@ -262,7 +262,6 @@ class XeroMigrator(Document):
 
 							# Append the next page to pages
 							pages.append(next_page)
-
 			else:
 				response = self._get(uri_string)
 				content = response.json()
@@ -511,7 +510,7 @@ class XeroMigrator(Document):
 				).insert()
 				self._create_address(erpsupplier, "Supplier", contact["Addresses"])
 		except Exception as e:
-			self._log_error(e)
+			self._log_error(e, contact)
 
 	def _create_address(self, entity, doctype, addresses):
 		try:
@@ -782,7 +781,7 @@ class XeroMigrator(Document):
 				invoice_doc.insert()
 				invoice_doc.submit()
 		except Exception as e:
-			self._log_error
+			self._log_error(e, invoice)
 
 	def _get_si_items(self, invoice, is_return=False):
 		items = []
@@ -881,7 +880,7 @@ class XeroMigrator(Document):
 				invoice_doc.insert()
 				invoice_doc.submit()
 		except Exception as e:
-			self._log_error
+			self._log_error(e, invoice)
 	
 	def _get_item_taxes(self, tax_type, tax_amount):
 		item_taxes = {}
@@ -1058,9 +1057,7 @@ class XeroMigrator(Document):
 				}
 
 			if "BatchPayment" in bank_transaction:
-				
 				bank_transaction_dict["payment_entries"] = payment_entries
-
 			frappe.get_doc(bank_transaction_dict).insert()
 
 		except Exception as e:
