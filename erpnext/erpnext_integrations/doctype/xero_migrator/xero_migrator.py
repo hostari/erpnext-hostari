@@ -63,8 +63,6 @@ class XeroMigrator(Document):
 			self._migrate_accounts()
 
 			entities_for_normal_transform = [
-				"Account",
-				"TaxRate",
 				"Contact",
 				"Item",
 				"Invoice",
@@ -79,11 +77,6 @@ class XeroMigrator(Document):
 				self._migrate_entries(entity)
 
 			self.set_indicator("Complete")
-
-			#-----------------------------------------------------------------	
-			self.get_manual_journals() # done
-			#-----------------------------------------------------------------
-
 		except Exception as e:
 			self.set_indicator("Failed")
 			self._log_error(e)
@@ -237,6 +230,7 @@ class XeroMigrator(Document):
 				"Payment": True,
 				"CreditNote": True,
 				"ManualJournal": True,
+				"Journal": True,
 				"BankTransaction": True,
 				"Asset": True
 			}
@@ -291,7 +285,8 @@ class XeroMigrator(Document):
 			"Invoice": self._save_invoice, #EN: POS, Sales, Purchase Invoice (retrieve individual invoices to retrieve line items)
 			"Payment": self._save_payment, #EN: Payment Entry, AP and AR invoices, invoices
 			"CreditNote": self._save_credit_note, #EN: Sales Invoice; Credit Note; Payment Entry
-			"ManualJournal": self._save_manual_journal, #EN: Journal Entry
+			"ManualJournal": self._save_manual_journal, #EN: Journal Entry; manually inputted transactions
+			"Journal": self._save_journal, #EN: Journal Entry: Xero-approved transactions
 			"BankTransaction": self._save_bank_transaction, #EN: Bank Transaction
 			"Asset": self._save_asset #EN: Asset
 
@@ -402,11 +397,11 @@ class XeroMigrator(Document):
 			"LIABILITY": "Liability",
 			"OTHERINCOME": "Income Account",
 			"OVERHEADS": "Indirect Expense",
-			"PREPAYMENT": "Income Account",
+			"PREPAYMENT": "Prepayment",
 			"REVENUE": "Direct Income",
 			"SALES": "Direct Income",
 			"TERMLIAB": "Liability",
-			# "NONCURRENT": 
+			"NONCURRENT": "Non-current Asset"
 		}
 
 		xero_account_name = account["Name"]
@@ -738,12 +733,13 @@ class XeroMigrator(Document):
 		).insert()
 
 	def _save_invoice(self, invoice):
-		xero_id = "Invoice - {}".format(invoice["InvoiceID"])
 		invoice_type = invoice["Type"]	
 
 		if invoice_type == "ACCPAY":
+			xero_id = "Purchase Invoice - {}".format(invoice["InvoiceID"])
 			self._save_purchase_invoice(invoice, xero_id)
 		elif invoice_type == "ACCREC":
+			xero_id = "Sales Invoice - {}".format(invoice["InvoiceID"])
 			self._save_sales_invoice(invoice, xero_id)
 
 	def _save_sales_invoice(self, invoice, xero_id, is_return=False, is_pos=False):
@@ -923,7 +919,7 @@ class XeroMigrator(Document):
 			]
 
 	def _save_manual_journal(self, manual_journal):
-		# JournalEntry is equivalent to a Journal Entry
+		# ManualJournal is equivalent to a user-inputted Journal Entry
 		def _get_je_accounts(lines):
 			# Converts JounalEntry lines to accounts list
 			posting_type_field_mapping = {
@@ -931,14 +927,15 @@ class XeroMigrator(Document):
 				"Debit": "debit_in_account_currency",
 			}
 
-			line_amount_abs_value = abs(line["LineAmount"])
-
 			accounts = []
 			for line in lines:
+				line_amount_abs_value = abs(line["LineAmount"])
 				account_name = self._get_account_name_by_code(
 					line["AccountCode"]
 				)
 
+				# In Xero, the use of (+) and (-) signs only signify the placement of the amount (debit or credit column)
+				# In ERPNext, amount will be saved as absolute values
 				if line["LineAmount"] > 0:
 					posting_type = "Debit"
 				elif line["LineAmount"] < 0:
@@ -957,6 +954,45 @@ class XeroMigrator(Document):
 		accounts = _get_je_accounts(manual_journal["JournalLines"])
 		posting_date = self.json_date_parser(manual_journal["Date"])
 		title = manual_journal["Narration"]
+		self.__save_journal_entry(xero_id, accounts, title, posting_date)
+
+	def _save_journal(self, journal):
+		# Journal is equivalent to a Xero-inputted journal entry
+		def _get_je_accounts(lines):
+			# Converts JounalEntry lines to accounts list
+			posting_type_field_mapping = {
+				"Credit": "credit_in_account_currency",
+				"Debit": "debit_in_account_currency",
+			}
+
+			accounts = []
+			
+			for line in lines:
+				line_amount_abs_value = abs(line["LineAmount"])
+				account_name = self._get_account_name_by_code(
+					line["AccountCode"]
+				)
+				# In Xero, the use of (+) and (-) signs only signify the placement of the amount (debit or credit column)
+				# In ERPNext, amount will be saved as absolute values
+
+				if line["LineAmount"] > 0:
+					posting_type = "Debit"
+				elif line["LineAmount"] < 0:
+					posting_type = "Credit"
+
+				accounts.append(
+					{
+						"account": account_name,
+						posting_type_field_mapping[posting_type]: line_amount_abs_value,
+						"cost_center": self.default_cost_center,
+					}
+				)
+			return accounts
+
+		xero_id = "Journal Entry - {}".format(journal["JournalID"])
+		accounts = _get_je_accounts(journal["JournalLines"])
+		posting_date = self.json_date_parser(journal["Date"])
+		title = journal["Description"]
 		self.__save_journal_entry(xero_id, accounts, title, posting_date)
 
 	def __save_journal_entry(self, xero_id, accounts, title, posting_date):
