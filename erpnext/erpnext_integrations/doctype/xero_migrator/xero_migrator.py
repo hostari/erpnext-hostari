@@ -81,16 +81,7 @@ class XeroMigrator(Document):
 			self.set_indicator("Complete")
 
 			#-----------------------------------------------------------------	
-			self.get_accounts() # done
-			self.get_bank_transactions() # payment entries skipped
-			self.get_bank_transfers() #skipped, to do: pull and download data
-			self.get_batch_payments() #skipped, to do: pull and download data
-			self.get_invoices() # done
-			self.get_items() # split to items for sale and stock
 			self.get_manual_journals() # done
-			self.get_tax_rates() # done
-			self.get_users()
-			self.get_assets() # done
 			#-----------------------------------------------------------------
 
 		except Exception as e:
@@ -99,7 +90,6 @@ class XeroMigrator(Document):
 
 		frappe.db.commit()
 
-	#xero
 	def get_tokens(self):
 		token = self.oauth.fetch_token(
 			token_url=self.token_endpoint, client_secret=self.client_secret, code=self.code
@@ -108,7 +98,6 @@ class XeroMigrator(Document):
 		self.refresh_token = token["refresh_token"]
 		self.save()
 
-	#xero
 	def _refresh_tokens(self):
 		token = self.oauth.refresh_token(
 			token_url=self.token_endpoint,
@@ -343,60 +332,6 @@ class XeroMigrator(Document):
 			entries = preprocessor(entries)
 		return entries
 
-	#xero
-	def get_tax_rates(self):
-		try:
-			query_uri = "{}/TaxRates".format(
-				self.api_endpoint
-			)
-			response = self._get(query_uri).json()
-
-			tax_rates = response["TaxRates"]
-
-			tax_name_with_rates = []
-
-			for tax_rate in tax_rates:
-				tax_name_with_rate = self._map_tax_name_to_rate(tax_rate)
-				tax_name_with_rates.append(tax_name_with_rate)
-
-			tax_name_with_rates
-		except Exception as e:
-			self._log_error(e, response.text)
-
-	#xero
-	def _map_tax_name_to_rate(self, tax_rate):
-		name = tax_rate["Name"]
-		rate = tax_rate["DisplayTaxRate"]
-		{name: rate}
-
-	#xero
-	def get_tax_rate_value(self, tax_name):
-		tax_rates_array = self.get_tax_rates(self)
-
-		for tax_rate in tax_rates_array:
-			if tax_name in tax_rates_array:
-				return tax_rate[tax_name]
-			return None  # Key not found in any dictionary
-
-	#xero
-	# given an ID:
-	# https://api.xero.com/api.xro/2.0/Accounts/{AccountID}
-	def get_accounts(self):
-		try:
-			query_uri = "{}/Accounts".format(
-				self.api_endpoint
-			)
-			response = self._get(query_uri).json()
-
-			accounts = response["Accounts"]
-
-			for account in accounts:
-				self._save_account(account)
-
-		except Exception as e:
-			self._log_error(e, response.text)
-
-	#xero
 	def _save_account(self, account):
 		# Account Class in Xero
 		root_account_mapping = {
@@ -602,7 +537,6 @@ class XeroMigrator(Document):
 		except Exception as e:
 			self._log_error(e, address)
 
-	#xero
 	def _save_item(self, item):
 		try:
 			if not frappe.db.exists(
@@ -720,7 +654,6 @@ class XeroMigrator(Document):
 			response = self._get(*args, **kwargs)
 		return response
 
-	#xero
 	def _get_unique_account_name(self, xero_name, number=0):
 		if number:
 			xero_account_name = "{} - {} - Xero".format(xero_name, number)
@@ -734,8 +667,7 @@ class XeroMigrator(Document):
 		else:
 			unique_account_name = xero_account_name
 		return unique_account_name
-
-	#xero
+	
 	def _log_error(self, execption, data=""):
 		frappe.log_error(
 			title="Xero Migration Error",
@@ -749,37 +681,11 @@ class XeroMigrator(Document):
 			),
 		)
 
-	#xero
 	def set_indicator(self, status):
 		self.status = status
 		self.save()
 		frappe.db.commit()
 
-	#xero
-	# given an ID:
-	# https://api.xero.com/api.xro/2.0/BankTransactions/{BankTransactionID}
-	def get_bank_transactions(self):
-		try:
-			query_uri = "{}/BankTransactions".format(
-				self.api_endpoint
-			)
-			response = self._get(query_uri).json()
-			bank_transactions = response["BankTransactions"]
-
-			for bank_transaction in bank_transactions:
-				self.process_bank_transaction(bank_transaction)
-
-			return response_string
-		except Exception as e:
-			self._log_error(e, response.text)
-
-	# #xero
-	# def _get_bank_account_number(self, bank_account_details):
-	# 	if bank_account_details:
-	# 		first_account = bank_account_details[0]
-	# 		first_account.get("bank_account_number")
-
-	#xero
 	def _get_bank_transaction_line_items(self, bank_transaction_line_items):
 		for line_item in bank_transaction_line_items:
 			frappe.get_doc(
@@ -791,7 +697,6 @@ class XeroMigrator(Document):
 				}
 			).insert()
 				
-	#xero
 	def process_bank_transaction(self, bank_transaction):
 		# check bank_account_transaction.py: do we need to clear the payment_entries when the 
 		# transaction has been reconciled?
@@ -832,54 +737,6 @@ class XeroMigrator(Document):
 			bank_transaction_dict
 		).insert()
 
-	#xero
-	# given an ID:
-	# https://api.xero.com/api.xro/2.0/BankTransfers/{BankTransferID}
-	def get_bank_transfers(self):
-		try:
-			query_uri = "{}/BankTransfers".format(
-				self.api_endpoint
-			)
-			response = self._get(query_uri)
-			response_string = response.json()
-
-			return response_string
-		except Exception as e:
-			self._log_error(e, response.text)
-
-	#xero
-	# given an ID:
-	# https://api.xero.com/api.xro/2.0/BatchPayments/{BatchPaymentID}
-	def get_batch_payments(self):
-		try:
-			query_uri = "{}/BatchPayments".format(
-				self.api_endpoint
-			)
-			response = self._get(query_uri)
-			response_string = response.json()
-
-			return response_string
-		except Exception as e:
-			self._log_error(e, response.text)
-
-	#xero
-	# given an ID:
-	# https://api.xero.com/api.xro/2.0/Invoices/{InvoiceID}
-	def get_invoices(self):
-		try:
-			query_uri = "{}/Invoices".format(
-				self.api_endpoint
-			)
-			response = self._get(query_uri)
-			invoices = response.json()
-			
-			for invoice in invoices:
-				self._save_invoice(invoice)
-
-		except Exception as e:
-			self._log_error(e, response.text)
-
-	#xero
 	def _save_invoice(self, invoice):
 		xero_id = "Invoice - {}".format(invoice["InvoiceID"])
 		invoice_type = invoice["Type"]	
@@ -931,7 +788,6 @@ class XeroMigrator(Document):
 		except Exception as e:
 			self._log_error
 
-	#xero
 	def _get_si_items(self, invoice, is_return=False):
 		items = []
 		for line_item in invoice["LineItems"]:
@@ -1100,9 +956,10 @@ class XeroMigrator(Document):
 		xero_id = "Journal Entry - {}".format(manual_journal["ManualJournalID"])
 		accounts = _get_je_accounts(manual_journal["JournalLines"])
 		posting_date = self.json_date_parser(manual_journal["Date"])
-		self.__save_journal_entry(xero_id, accounts, posting_date)
+		title = manual_journal["Narration"]
+		self.__save_journal_entry(xero_id, accounts, title, posting_date)
 
-	def __save_journal_entry(self, xero_id, accounts, posting_date):
+	def __save_journal_entry(self, xero_id, accounts, title, posting_date):
 		try:
 			if not frappe.db.exists(
 				{"doctype": "Journal Entry", "xero_id": xero_id, "company": self.company}
@@ -1115,6 +972,8 @@ class XeroMigrator(Document):
 						"posting_date": posting_date,
 						"accounts": accounts,
 						"multi_currency": 1,
+						"accounts":  accounts,
+						"title": title,
 					}
 				)
 				je.insert()
@@ -1360,140 +1219,26 @@ class XeroMigrator(Document):
 						"is_existing_asset": 1,
 						"gross_purchase_amount": asset["purchasePrice"],
 						"purchase_date": asset["purchaseDate"]
-					})
+					}).insert()
 		except Exception as e:
 			self._log_error(e, asset)
 
-	#xero
-	# given an ID:
-	# https://api.xero.com/api.xro/2.0/Items/{ItemID}
-	def get_items(self):
-		try:
-			query_uri = "{}/Items".format(
-				self.api_endpoint
-			)
-			response = self._get(query_uri).json()
-			items = response["Items"]
-
-			for item in items:
-				self._save_item(item)
-
-		except Exception as e:
-			self._log_error(e, response.text)
-
-	#xero
-	# given an ID:
-	# https://api.xero.com/api.xro/2.0/ManualJournals/{JournalID}
-	# In ERPNext, Journal Entries correspond to Journals/Manual Journals in Xero
-	def get_manual_journals(self):
-		try:
-			pages = [1]
-			uri_strings = []
-
-			for page in pages:
-				query_uri = "{}/ManualJournals?page={}".format(
-					self.api_endpoint, page
-				)
-				response = self._get(query_uri) # check first page of Manual Journal
-				page_response = response.json()
-				manual_journal = page_response["ManualJournal"] #Check if Manual Journal object contains entries
-				if manual_journal:
-					# if array is not empty, append the URL string to the uri_strings_array
-					uri_strings.append(query_uri)
-					# increment the page
-					page += 1	
-					# append the page to the pages array
-					pages.append(page)
-					
-
-			for uri_string in uri_strings:
-				response = self._get(uri_string)
-				manual_journal_content = response.json()
-				self.process_manual_journal_entries(manual_journal_content)
-
-		except Exception as e:
-			self._log_error(e, response.text)
-
-	def process_manual_journal_entries(self, manual_journal_content):
-		for entry in manual_journal_content:
-			journal_entry_dict = {
-				"xero_id": entry["ManualJournalID"],
-				"company": self.company,
-				"title": entry["Narration"],
-				"posting_date": self.get_date_from_timestamp(self.timestamp_string[entry["Date"]]),
-				"accounts":  self.get_journal_entry_accounts(entry["JournalLines"])
-			}
-	
-	#xero
-	def get_journal_entry_accounts(self, journal_lines):
-		journal_entry_accounts = []
-
-		for line in journal_lines:
-			account = frappe.db.get_value("Account", {"account_number": line["Account"]}, "account_name")
-			journal_line_dict = {
-				"reference_name": line["Description"],
-				"account": account
-			}
-
-			if line["LineAmount"] > 0:
-				journal_line_dict["debit"] = line["LineAmount"]
-			else:
-				journal_line_dict["credit"] = line["LineAmount"]
-
-			journal_entry_accounts.append(journal_line_dict)
-
-		return journal_entry_accounts
-
-	#xero
-	# given an ID:
-	# https://api.xero.com/api.xro/2.0/TaxRates/{TaxRateID}
-	def get_tax_rates(self):
-		try:
-			query_uri = "{}/TaxRates".format(
-				self.api_endpoint
-			)
-			response = self._get(query_uri)
-			response_string = response.json()
-
-			return response_string
-		except Exception as e:
-			self._log_error(e, response.text)
-
-	#xero
-	# given an ID:
-	# https://api.xero.com/api.xro/2.0/Users/{UserID}
-	def get_users(self):
-		try:
-			query_uri = "{}/Users".format(
-				self.api_endpoint
-			)
-			response = self._get(query_uri)
-			response_string = response.json()
-
-			return response_string
-		except Exception as e:
-			self._log_error(e, response.text)
-
-	#xero
 	def get_date_from_timestamp(self, timestamp_string):
 		timestamp = int(timestamp_string.split('(')[1].split('+')[0])
 		date_object = datetime.utcfromtimestamp(timestamp / 1000.0)
 
 		date_object.date().strftime("%m-%d-%Y")
 
-	#xero
 	def get_date_object(self, date_time_string):
 		date_time_object = self.date_and_time_parser(self, date_time_string)
 		extracted_date = date_time_object.date()
 
 		extracted_date.strftime("%m-%d-%Y")
 
-	#xero
 	def get_time_object(self, date_time_string):
 		date_time_object = date_time_string.date()
 		date_time_object.time()
 
-	#xero
 	def date_and_time_parser(self, date_time_string):
 		date_time_string = "2009-05-27 00:00:00"
 
@@ -1515,39 +1260,3 @@ class XeroMigrator(Document):
 		formatted_date = date_object.strftime("%Y-%m-%d")
 
 		return formatted_date
-	
-	#xero
-	def get_assets(self):
-		try:
-			query_uri = "https://api.xero.com/assets.xro/1.0/Assets"
-
-			response = self._get(query_uri)
-			assets = response.json()
-
-			for asset in assets:
-				self._process_assets(asset)
-		except Exception as e:
-			self._log_error(e, response.text)
-
-	#xero
-	def _process_assets(self, asset):
-		asset_status_mapping = {
-			"DRAFT": "Draft",
-			"REGISTERED": "Submitted",
-			"DISPOSED": "Scrapped"
-		}
-
-		asset_dict = {
-			"xero_id": asset["assetId"],
-			"item_name": asset["assetName"],
-			"item_code": asset["assetNumber"],
-			"company": self.company,
-			"purchase_date": self.get_date_object(asset["purchaseDate"]), 
-			"purchase_receipt_amount": asset["purchasePrice"],
-			"assetStatus": asset_status_mapping[asset["assetStatus"]],
-			"value_after_depreciation": asset["bookDepreciationDetail"]["residualValue"],
-		}
-
-		frappe.get_doc(
-			asset_dict
-		).insert()
