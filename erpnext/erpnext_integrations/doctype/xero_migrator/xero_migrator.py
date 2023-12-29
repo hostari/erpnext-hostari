@@ -1313,8 +1313,15 @@ class XeroMigrator(Document):
 		except Exception as e:
 			self._log_error(e, credit_note)
 
-	def _save_purchase_invoice_credit_note(self, xero_id, credit_note, is_return=True, is_pos=False):
+	def _save_purchase_invoice_credit_note(self, xero_id, credit_note, is_return=True):
 		try:
+			if credit_note["Status"] == "PAID":
+				is_paid=True
+			else:
+				is_paid=False
+			
+			payments = []
+
 			for allocation in credit_note["Allocations"]:	
 				purchase_invoice = frappe.get_all(
 					"Purchase Invoice",
@@ -1330,9 +1337,20 @@ class XeroMigrator(Document):
 					"doctype": "Purchase Invoice",
 					"xero_id": xero_id,
 					"is_return": is_return,
-					"is_pos": is_pos,
+					"is_paid": is_paid,
 					"return_against": purchase_invoice["name"]
 				}
+
+				if credit_note["Status"] == "PAID":
+					payment = {
+						"mode_of_payment": "Cash",
+						"amount": allocation["Amount"]
+					}
+					payments.append(payment)
+
+				if len(payments) != 0:
+					invoice_dict["payments"] = payments
+
 				invoice_doc = frappe.get_doc(invoice_dict)
 				invoice_doc.insert()
 				invoice_doc.submit()
