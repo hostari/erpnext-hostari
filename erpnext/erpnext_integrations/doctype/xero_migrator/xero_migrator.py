@@ -1262,38 +1262,58 @@ class XeroMigrator(Document):
 			self._log_error(e, payment)
 	
 	def _save_credit_note(self, credit_note):
+		xero_id = "Credit Note - {}".format(credit_note["CreditNoteID"])
+
 		if credit_note["Type"] == "ACCRECCREDIT":
-			self._save_sales_invoice_credit_note(credit_note)
+			self._save_sales_invoice_credit_note(xero_id, credit_note)
 		elif credit_note["Type"] == "ACCPAYCREDIT":
-			self._save_purchase_invoice_credit_note(credit_note)
+			self._save_purchase_invoice_credit_note(xero_id, credit_note)
 	
-	def _save_sales_invoice_credit_note(self, credit_note, is_return=True, is_pos=False):
+	def _save_sales_invoice_credit_note(self, xero_id, credit_note, is_return=True):
 		try:
+			if credit_note["Status"] == "PAID":
+				is_pos=True
+			else:
+				is_pos=False
+
+			payments = []
+
 			for allocation in credit_note["Allocations"]:	
 				sales_invoice = frappe.get_all(
 					"Sales Invoice",
 					filters={
-						"xero_id": allocation["CustomerRef"]["InvoiceID"],
+						"xero_id": allocation["Invoice"]["InvoiceNumber"],
 						"company": self.company,
 					},
 				)[0],
-			if not frappe.db.exists(
-				{"doctype": "Sales Invoice", "xero_id": credit_note["CreditNoteID"], "company": self.company}
-			):
-				invoice_dict = {
-					"doctype": "Sales Invoice",
-					"xero_id": credit_note["CreditNoteID"],
-					"is_return": is_return,
-					"is_pos": is_pos,
-					"return_against": sales_invoice["name"]
-				}
-				invoice_doc = frappe.get_doc(invoice_dict)
-				invoice_doc.insert()
-				invoice_doc.submit()
+				if not frappe.db.exists(
+					{"doctype": "Sales Invoice", "xero_id": xero_id, "company": self.company}
+				):
+					invoice_dict = {
+						"doctype": "Sales Invoice",
+						"xero_id": xero_id,
+						"is_return": is_return,
+						"is_pos": is_pos,
+						"return_against": sales_invoice["name"]
+					}
+
+					if credit_note["Status"] == "PAID":
+						payment = {
+							"mode_of_payment": "Cash",
+							"amount": allocation["Amount"]
+						}
+						payments.append(payment)
+
+					if len(payments) != 0:
+						invoice_dict["payments"] = payments
+
+					invoice_doc = frappe.get_doc(invoice_dict)
+					invoice_doc.insert()
+					invoice_doc.submit()
 		except Exception as e:
 			self._log_error(e, credit_note)
 
-	def _save_purchase_invoice_credit_note(self, credit_note, is_return=True, is_pos=False):
+	def _save_purchase_invoice_credit_note(self, xero_id, credit_note, is_return=True, is_pos=False):
 		try:
 			for allocation in credit_note["Allocations"]:	
 				purchase_invoice = frappe.get_all(
@@ -1304,11 +1324,11 @@ class XeroMigrator(Document):
 					},
 				)[0],
 			if not frappe.db.exists(
-				{"doctype": "Purchase Invoice", "xero_id": credit_note["CreditNoteID"], "company": self.company}
+				{"doctype": "Purchase Invoice", "xero_id": xero_id, "company": self.company}
 			):
 				invoice_dict = {
 					"doctype": "Purchase Invoice",
-					"xero_id": credit_note["CreditNoteID"],
+					"xero_id": xero_id,
 					"is_return": is_return,
 					"is_pos": is_pos,
 					"return_against": purchase_invoice["name"]
