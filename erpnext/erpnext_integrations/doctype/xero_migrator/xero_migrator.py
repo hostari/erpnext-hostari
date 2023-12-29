@@ -780,21 +780,20 @@ class XeroMigrator(Document):
 					"company": self.company,
 					"items": items,
 					"taxes": taxes,
-					"payments": payments,
+					"payments": payments
 				}
 
 				for line_item in invoice["LineItems"]:
 					item = self._get_si_item(line_item)
 					items.append(item)
 					
-
 					if invoice["LineAmountTypes"] == "Inclusive":
 						tax = self._get_tax(line_item)
 						taxes.append(tax)
 
 				if "Payments" in invoice:
 					for payment in invoice["Payments"]:
-						payment = self._get_invoice_payment(line_item, is_return=is_return, is_pos=True)
+						payment = self._get_sales_invoice_payment(line_item, is_return=is_return, is_pos=True)
 						payments.append(payment)
 
 				if "TotalTax" in invoice:
@@ -863,6 +862,10 @@ class XeroMigrator(Document):
 	
 	def _save_purchase_invoice(self, invoice, xero_id, is_return=False):
 		try:
+			items = []
+			payments = []
+			taxes = []
+			
 			invoice_number = invoice["InvoiceNumber"]
 			if not frappe.db.exists(
 				{"doctype": "Purchase Invoice", "xero_id": xero_id, "company": self.company}
@@ -885,16 +888,23 @@ class XeroMigrator(Document):
 					"set_posting_time": "1",
 					"disable_rounded_total": 1,
 					"company": self.company,
+					"items": items,
+					"taxes": taxes,
+					"payments": payments
 				}
 
-				if "Payments" in invoice:
-					invoice_dict["payments"] = self._get_invoice_payments(invoice, is_return=is_return)
+				for line_item in invoice["LineItems"]:
+					item = self._get_pi_item(line_item)
+					items.append(item)
 
-				if "LineItems" in invoice:
-					invoice_dict["items"]: self._get_pi_items(invoice)
+					if invoice["LineAmountTypes"] == "Inclusive":
+						tax = self._get_tax(line_item)
+						taxes.append(tax)
 
-				if "LineItems" in invoice and "LineAmountTypes" == "Inclusive":
-					"taxes": self._get_taxes(invoice)
+					if "Payments" in invoice:
+							for payment in invoice["Payments"]:
+								payment = self._get_purchase_invoice_payment(line_item, is_return=is_return, is_pos=True)
+								payments.append(payment)
 
 				if "TotalTax" in invoice:
 					invoice_dict["total_taxes_and_charges"]: invoice["TotalTax"]
@@ -924,10 +934,22 @@ class XeroMigrator(Document):
 			}
 		return tax
 
-
-	def _get_invoice_payment(self, line_item, is_return=False, is_pos=False):
+	def _get_sales_invoice_payment(self, line_item, is_return=False, is_pos=False):
 		# to get payments first
 		if is_pos:
+			amount = line_item["LineAmount"]
+			if is_return:
+				amount = -amount
+			return [
+				{
+					"mode_of_payment": "Cash",
+					"account": self._get_account_name_by_id(line_item["AccountId"]),
+					"amount": amount,
+				}
+			]
+		
+	def _get_purchase_invoice_payment(self, line_item, is_return=False, is_paid=False):
+		if is_paid:
 			amount = line_item["LineAmount"]
 			if is_return:
 				amount = -amount
