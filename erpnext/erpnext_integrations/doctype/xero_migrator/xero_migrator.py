@@ -68,7 +68,6 @@ class XeroMigrator(Document):
 				"Invoice",
 				"Payment",
 				"CreditNote",
-				"ManualJournal",
 				"BankTransaction",
 				"Asset"
 			]
@@ -124,6 +123,7 @@ class XeroMigrator(Document):
 			"Journal Entry",
 			"Purchase Invoice",
 			"Payment Entry",
+			"BankTransaction",
 			"Asset"
 		]
 		for doctype in doctypes_for_xero_id_field:
@@ -229,7 +229,6 @@ class XeroMigrator(Document):
 				"Invoice": True,
 				"Payment": True,
 				"CreditNote": True,
-				"ManualJournal": True,
 				"Journal": True,
 				"BankTransaction": True,
 				"Asset": True
@@ -284,19 +283,10 @@ class XeroMigrator(Document):
 			"Invoice": self._save_invoice, #EN: POS, Sales, Purchase Invoice (retrieve individual invoices to retrieve line items)
 			"Payment": self._save_payment, #EN: Payment Entry, AP and AR invoices, invoices
 			"CreditNote": self._save_credit_note, #EN: Sales Invoice; Credit Note; Payment Entry
-			"ManualJournal": self._save_manual_journal, #EN: Journal Entry; manually inputted transactions
-			"Journal": self._save_journal, #EN: Journal Entry: Xero-approved transactions
+			"Journal": self._save_journal, #EN: Journal Entry: Xero-added transactions
 			"BankTransaction": self._save_bank_transaction, #EN: Bank Transaction
 			"Asset": self._save_asset #EN: Asset
 
-			#"TaxCode": self._save_tax_code,
-			#"Preferences": self._save_preference,
-			#"Customer": self._save_customer,
-			#"Supplier": self._save_vendor,
-			#"SalesReceipt": self._save_sales_receipt,
-			#"RefundReceipt": self._save_refund_receipt,
-			#"VendorCredit": self._save_vendor_credit,
-			#"BillPayment": self._save_bill_payment,
 			#"Deposit": self._save_deposit,
 			#"Advance Payment": self._save_advance_payment,
 			# "Tax Payment": self._save_tax_payment,
@@ -973,46 +963,8 @@ class XeroMigrator(Document):
 				}
 			]
 
-	def _save_manual_journal(self, manual_journal):
-		# ManualJournal is equivalent to a user-inputted Journal Entry
-		def _get_je_accounts(lines):
-			# Converts JounalEntry lines to accounts list
-			posting_type_field_mapping = {
-				"Credit": "credit_in_account_currency",
-				"Debit": "debit_in_account_currency",
-			}
-
-			accounts = []
-			for line in lines:
-				line_amount_abs_value = abs(line["LineAmount"])
-				account_name = self._get_account_name_by_code(
-					line["AccountCode"]
-				)
-
-				# In Xero, the use of (+) and (-) signs only signify the placement of the amount (debit or credit column)
-				# In ERPNext, amount will be saved as absolute values
-				if line["LineAmount"] > 0:
-					posting_type = "Debit"
-				elif line["LineAmount"] < 0:
-					posting_type = "Credit"
-
-				accounts.append(
-					{
-						"account": account_name,
-						posting_type_field_mapping[posting_type]: line_amount_abs_value,
-						"cost_center": self.default_cost_center,
-					}
-				)
-			return accounts
-		
-		xero_id = "Journal Entry - {}".format(manual_journal["ManualJournalID"])
-		accounts = _get_je_accounts(manual_journal["JournalLines"])
-		posting_date = self.json_date_parser(manual_journal["Date"])
-		title = manual_journal["Narration"]
-		self.__save_journal_entry(xero_id, accounts, title, posting_date)
-
 	def _save_journal(self, journal):
-		# Journal is equivalent to a Xero-inputted journal entry
+		# Journal is equivalent to a Xero-added journal entry
 		def _get_je_accounts(lines):
 			# Converts JounalEntry lines to accounts list
 			posting_type_field_mapping = {
