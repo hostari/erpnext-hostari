@@ -755,14 +755,14 @@ class XeroMigrator(Document):
 			else:
 				is_pos = False
 
+			items = []
+			payments = []
+			taxes = []
+
 			invoice_number = invoice["InvoiceNumber"]
 			if not frappe.db.exists(
 				{"doctype": "Sales Invoice", "xero_id": xero_id, "company": self.company}
 			):
-				items = []
-				payments = []
-				taxes = []
-
 				invoice_dict = {
 					"doctype": "Sales Invoice",
 					"xero_id": xero_id,
@@ -796,9 +796,9 @@ class XeroMigrator(Document):
 						tax = self._get_tax(line_item)
 						taxes.append(tax)
 
-				if "Payments" in invoice:
+				if "Payments" in invoice and len(invoice["Payments"]) != 0:
 					for payment in invoice["Payments"]:
-						payment = self._get_sales_invoice_payment(line_item, is_return=is_return, is_pos=True)
+						payment = self._get_sales_invoice_payment(invoice["LineItems"][0], is_return=is_return, is_pos=True)
 						payments.append(payment)
 
 				if "TotalTax" in invoice:
@@ -867,6 +867,11 @@ class XeroMigrator(Document):
 	
 	def _save_purchase_invoice(self, invoice, xero_id, is_return=False):
 		try:
+			if len(invoice["Payments"]) != 0:
+				is_paid = True
+			else:
+				is_paid = False
+
 			items = []
 			payments = []
 			taxes = []
@@ -890,6 +895,8 @@ class XeroMigrator(Document):
 							"company": self.company,
 						},
 					)[0]["name"],
+					"is_pos": is_paid,
+					"is_return": is_return,
 					"set_posting_time": "1",
 					"disable_rounded_total": 1,
 					"company": self.company,
@@ -906,10 +913,10 @@ class XeroMigrator(Document):
 						tax = self._get_tax(line_item)
 						taxes.append(tax)
 
-					if "Payments" in invoice:
-							for payment in invoice["Payments"]:
-								payment = self._get_purchase_invoice_payment(line_item, is_return=is_return, is_pos=True)
-								payments.append(payment)
+				if "Payments" in invoice and len(invoice["Payments"]) != 0:
+					for payment in invoice["Payments"]:
+						payment = self._get_purchase_invoice_payment(invoice["LineItems"][0], is_return=is_return, is_pos=True)
+						payments.append(payment)
 
 				if "TotalTax" in invoice:
 					invoice_dict["total_taxes_and_charges"]: invoice["TotalTax"]
@@ -1151,7 +1158,6 @@ class XeroMigrator(Document):
 			)[0]
 			xero_id = "Sales Receipt - {}".format(payment["PaymentId"])
 			self.__save_sales_invoice_payment(invoice, payment, xero_id)
-			#self._save_payment_entry(payment_type, reference_doctype, invoice, payment)
 
 	# Also Sales Receipt
 	def __save_sales_invoice_payment(self, invoice, payment, xero_id, is_pos=True, is_return=False):
@@ -1160,10 +1166,6 @@ class XeroMigrator(Document):
 			if not frappe.db.exists(
 				{"doctype": "Sales Invoice", "xero_id": xero_id, "company": self.company}
 			):
-				items = []
-				payments = []
-				taxes = []
-
 				line_item = {
 					"LineAmount": payment["Amount"],
 					"AccountId": payment["Account"]["AccountID"]
@@ -1189,8 +1191,8 @@ class XeroMigrator(Document):
 					"set_posting_time": "1",
 					"disable_rounded_total": 1,
 					"company": self.company,
-					"items": invoice[items],
-					"taxes": invoice[taxes],
+					"items": invoice["items"],
+					"taxes": invoice["taxes"],
 					"payments": self._get_sales_invoice_payment(line_item, is_return=is_return, is_pos=True)
 				}			
 
@@ -1201,7 +1203,7 @@ class XeroMigrator(Document):
 		except Exception as e:
 			self._log_error(e, payment)
 
-	def _save_purchase_invoice_payment(self, payment_type, invoice_id, payment):		
+	def _save_purchase_invoice_payment(self, invoice_id, payment):		
 		if frappe.db.exists(
 			{"doctype": "Purchase Invoice", "xero_id": invoice_id, "company": self.company}
 		):
@@ -1213,8 +1215,51 @@ class XeroMigrator(Document):
 				},
 				fields=["name", "customer", "credit_to"],
 			)[0]
-			reference_doctype = "Purchase Invoice"
-			self._save_payment_entry(payment_type, reference_doctype, invoice, payment)
+			xero_id = "Purchase Receipt - {}".format(payment["PaymentId"])
+			self.__save_purchase_invoice_payment(invoice, payment, xero_id)
+
+	def __save_purchase_invoice_payment(self, invoice, payment, xero_id, is_paid=True, is_return=False):
+		try:
+			invoice_number = payment["Invoice"]["InvoiceNumber"]
+			if not frappe.db.exists(
+				{"doctype": "Purchase Invoice", "xero_id": xero_id, "company": self.company}
+			):
+				line_item = {
+					"LineAmount": payment["Amount"],
+					"AccountId": payment["Account"]["AccountID"]
+				}
+
+				invoice_dict = {
+					"doctype": "Purchase Invoice",
+					"xero_id": xero_id,
+					"invoice_number": invoice_number,
+					"currency": invoice["currency"],
+					"conversion_rate": invoice["conversion_rate"],
+					"posting_date": self.get_date_object(invoice["DateString"]),
+					"due_date": self.get_date_object(invoice["DueDateString"]),
+					"customer": frappe.get_all(
+						"Customer",
+						filters={
+							"xero_id": invoice["Contact"]["ContactID"],
+							"company": self.company,
+						},
+					)[0]["name"],
+					"is_return": is_return,
+					"is_paid": is_paid,
+					"set_posting_time": "1",
+					"disable_rounded_total": 1,
+					"company": self.company,
+					"items": invoice["items"],
+					"taxes": invoice["taxes"],
+					"payments": self._get_purchase_invoice_payment(line_item, is_return=is_return, is_paid=True)
+				}			
+				
+				invoice_doc = frappe.get_doc(invoice_dict)	
+				invoice_doc.insert()
+				invoice_doc.submit()
+
+		except Exception as e:
+			self._log_error(e, payment)
 	
 	def _save_payment_entry(self, payment_type, reference_doctype, invoice, payment):	
 		if not frappe.db.exists(
