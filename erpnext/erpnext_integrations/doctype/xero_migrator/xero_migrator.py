@@ -1261,28 +1261,6 @@ class XeroMigrator(Document):
 		except Exception as e:
 			self._log_error(e, payment)
 	
-	def _save_payment_entry(self, payment_type, reference_doctype, invoice, payment):	
-		if not frappe.db.exists(
-			{"doctype": "Payment Entry", "xero_id":  payment["PaymentID"], "company": self.company}
-		):
-			references = []
-			references.append({
-				"reference_doctype": reference_doctype,
-				"reference_name": invoice["InvoiceNumber"],
-				"total_amount": invoice["Total"]
-			})
-			
-			frappe.get_doc({
-				"doctype": "Payment Entry",
-				"xero_id": payment["PaymentID"],
-				"payment_type": payment_type,
-				"paid_from": self._get_account_name_by_id(payment["Account"]["AccountID"]), 
-				"paid_to": self._get_account_name_by_id(invoice["LineItems"][0]["AccountId"]), 
-				"paid_amount": payment["Total"], 
-				"total_taxes_and_charges": payment["TotalTax"],
-				"references": references
-			})
-	
 	def _save_credit_note(self, credit_note):
 		if credit_note["Type"] == "ACCRECCREDIT":
 			self._save_sales_invoice_credit_note(credit_note)
