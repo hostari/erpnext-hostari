@@ -731,22 +731,33 @@ class XeroMigrator(Document):
 			bank_transaction_dict
 		).insert()
 
+	# Retrieve sales invoices or purchase bills 
+	# Saving an Invoice as Sales or Purchase automatically designates the amounts to the correct column
 	def _save_invoice(self, invoice):
 		invoice_type = invoice["Type"]	
 
+		# A bill – commonly known as an Accounts Payable or supplier invoice
 		if invoice_type == "ACCPAY":
 			xero_id = "Purchase Invoice - {}".format(invoice["InvoiceID"])
 			self._save_purchase_invoice(invoice, xero_id)
+		
+		# A sales invoice – commonly known as an Accounts Receivable or customer invoice
 		elif invoice_type == "ACCREC":
 			xero_id = "Sales Invoice - {}".format(invoice["InvoiceID"])
 			self._save_sales_invoice(invoice, xero_id)
 
+	# is_pos=True signifies Sales Receipt, POS Sales Invoice
+	# setting is_pos to True adds Payments section
 	def _save_sales_invoice(self, invoice, xero_id, is_return=False, is_pos=False):
 		try:
 			invoice_number = invoice["InvoiceNumber"]
 			if not frappe.db.exists(
 				{"doctype": "Sales Invoice", "xero_id": xero_id, "company": self.company}
 			):
+				items = []
+				payments = []
+				taxes = []
+
 				invoice_dict = {
 					"doctype": "Sales Invoice",
 					"xero_id": xero_id,
@@ -762,40 +773,49 @@ class XeroMigrator(Document):
 							"company": self.company,
 						},
 					)[0]["name"],
-					
 					"is_return": is_return,
 					"is_pos": is_pos,
-					"items": self._get_si_items(invoice),
-					"taxes": self._get_taxes(invoice),
-
 					"set_posting_time": "1",
 					"disable_rounded_total": 1,
 					"company": self.company,
+					"items": items,
+					"taxes": taxes,
+					"payments": payments,
 				}
-				# when to apply taxes and discounts
+
+				for line_item in invoice["LineItems"]:
+					item = self._get_si_item(line_item)
+					items.append(item)
+					
+
+					if invoice["LineAmountTypes"] == "Inclusive":
+						tax = self._get_tax(line_item)
+						taxes.append(tax)
 
 				if "Payments" in invoice:
-					invoice_dict["payments"] = self._get_invoice_payments(invoice, is_return=False, is_pos=True)
+					for payment in invoice["Payments"]:
+						payment = self._get_invoice_payment(line_item, is_return=is_return, is_pos=True)
+						payments.append(payment)
 
+				if "TotalTax" in invoice:
+					invoice_dict["total_taxes_and_charges"]: invoice["TotalTax"]
+					
 				invoice_doc = frappe.get_doc(invoice_dict)
 				invoice_doc.insert()
 				invoice_doc.submit()
 		except Exception as e:
 			self._log_error(e, invoice)
 
-	def _get_si_items(self, invoice, is_return=False):
-		items = []
-		for line_item in invoice["LineItems"]:
-			item = frappe.db.get_all(
-				"Item",
-				filters={
-					"xero_id": line_item["Item"]["ItemID"],
-					"company": self.company,
-				},
-				fields=["name", "code"],
-			)[0]
-			items.append(
-				{
+	def _get_si_item(self, line_item, is_return=False):
+		item = frappe.db.get_all(
+			"Item",
+			filters={
+				"xero_id": line_item["Item"]["ItemID"],
+				"company": self.company,
+			},
+			fields=["name", "code"],
+		)[0]
+		item = {
 					"item_name": item["name"],
 					"item_code": item["code"],
 					"conversion_factor": 1,
@@ -807,12 +827,9 @@ class XeroMigrator(Document):
 					"item_tax_rate": json.dumps(self._get_item_taxes(line_item["TaxType"], line_item["TaxAmount"])),
 					"income_account": self._get_account_name_by_id(line_item["AccountId"])
 				}
-			)
-	
 		if is_return:
-			items[-1]["qty"] *= -1
-		
-		return items
+			item["qty"] *= -1
+		return item
 	
 	def _get_pi_items(self, invoice, is_return=False):
 		items = []
@@ -843,9 +860,8 @@ class XeroMigrator(Document):
 			items[-1]["qty"] *= -1
 		
 		return items
-
 	
-	def _save_purchase_invoice(self, invoice, xero_id, is_return=False, is_pos=False):
+	def _save_purchase_invoice(self, invoice, xero_id, is_return=False):
 		try:
 			invoice_number = invoice["InvoiceNumber"]
 			if not frappe.db.exists(
@@ -866,16 +882,23 @@ class XeroMigrator(Document):
 							"company": self.company,
 						},
 					)[0]["name"],
-						
-					"items": self._get_pi_items(invoice),
-					"taxes": self._get_taxes(invoice),
-					"payments": self._get_invoice_payments(invoice, is_return=is_return, is_pos=is_pos),
-
 					"set_posting_time": "1",
 					"disable_rounded_total": 1,
 					"company": self.company,
 				}
-				# when to apply taxes and discounts
+
+				if "Payments" in invoice:
+					invoice_dict["payments"] = self._get_invoice_payments(invoice, is_return=is_return)
+
+				if "LineItems" in invoice:
+					invoice_dict["items"]: self._get_pi_items(invoice)
+
+				if "LineItems" in invoice and "LineAmountTypes" == "Inclusive":
+					"taxes": self._get_taxes(invoice)
+
+				if "TotalTax" in invoice:
+					invoice_dict["total_taxes_and_charges"]: invoice["TotalTax"]
+
 				invoice_doc = frappe.get_doc(invoice_dict)
 				invoice_doc.insert()
 				invoice_doc.submit()
@@ -890,29 +913,28 @@ class XeroMigrator(Document):
 			item_taxes[tax_head] = tax_rate["RateValue"]
 		return item_taxes
 
-	def _get_taxes(self, entry):
-		taxes = []
-		for line_item in entry["LineItems"]:
-			account_head = self._get_account_name_by_id("TaxRate - {}".format(line_item["TaxType"]))
-			taxes.append(
-				{
-					"charge_type": "Actual",
-					"account_head": account_head,
-					"description": account_head,
-					"cost_center": self.default_cost_center,
-					"amount": line_item["TaxAmount"],
-				}
-			)
+	def _get_tax(self, line_item):
+		account_head = self._get_account_name_by_id("TaxRate - {}".format(line_item["TaxType"]))
+		tax ={
+				"charge_type": "Actual",
+				"account_head": account_head,
+				"description": account_head,
+				"cost_center": self.default_cost_center,
+				"amount": line_item["TaxAmount"],
+			}
+		return tax
 
-	def _get_invoice_payments(self, invoice, is_return=False, is_pos=False):
+
+	def _get_invoice_payment(self, line_item, is_return=False, is_pos=False):
 		# to get payments first
 		if is_pos:
-			amount = invoice["AmountPaid"]
+			amount = line_item["LineAmount"]
 			if is_return:
 				amount = -amount
 			return [
 				{
 					"mode_of_payment": "Cash",
+					"account": self._get_account_name_by_id(line_item["AccountId"]),
 					"amount": amount,
 				}
 			]
@@ -1063,6 +1085,9 @@ class XeroMigrator(Document):
 		except Exception as e:
 			self._log_error(e, bank_transaction)
 
+	# Xero: Payment vs Prepayment
+	# Payment: after the invoice has been issued (https://central.xero.com/s/article/Record-payment-of-a-sales-invoice)
+	# Prepayment: before invoice has been issued (https://central.xero.com/s/article/Record-a-prepayment)
 	def _save_payment(self, payment):
 		try:
 			invoice_id = payment["Invoice"]["InvoiceID"]
