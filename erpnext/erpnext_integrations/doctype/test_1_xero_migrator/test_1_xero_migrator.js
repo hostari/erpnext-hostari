@@ -1,7 +1,7 @@
 // Copyright (c) 2023, Frappe Technologies Pvt. Ltd. and contributors
 // For license information, please see license.txt
 
-frappe.ui.form.on("Xero Migrator", {
+frappe.ui.form.on("Test 1 Xero Migrator", {
 	connect: function(frm) {
 		// OAuth requires user intervention to provide application access permissionsto requested scope
 		// Here we open a new window and redirect user to the authorization url.
@@ -9,12 +9,13 @@ frappe.ui.form.on("Xero Migrator", {
 		window.open(frm.doc.authorization_url)
 	},
     fetch_data: function(frm) {
-		frm.call("migrate")
+		response = frm.call("migrate")
+        console.log(response)
 	},
     onload: function(frm) {
 		frm.trigger("set_indicator")
 		var domain = frappe.urllib.get_base_url()
-		var redirect_url = `${domain}/api/method/erpnext.erpnext_integrations.doctype.xero_migrator.xero_migrator.callback`
+		var redirect_url = `${domain}/api/method/erpnext.erpnext_integrations.doctype.test_1_xero_migrator.test_1_xero_migrator.callback`
 		if (frm.doc.redirect_url != redirect_url) {
 			frm.set_value("redirect_url", redirect_url)
 		}

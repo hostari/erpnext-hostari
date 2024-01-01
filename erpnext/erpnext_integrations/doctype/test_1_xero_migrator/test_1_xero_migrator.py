@@ -1,5 +1,5 @@
-# Copyright (c) 2023, Frappe Technologies Pvt. Ltd. and contributors
-# For license information, please see license.txt
+# Copyright (c) 2023, Frappe Technologies Pvt. Ltd. and Contributors
+# See license.txt
 
 import json
 import traceback
@@ -9,6 +9,8 @@ import requests
 from frappe import _
 from frappe.model.document import Document
 from requests_oauthlib import OAuth2Session
+import jwt
+
 
 from datetime import datetime, timedelta
 
@@ -16,20 +18,21 @@ from erpnext import encode_company_abbr
 
 @frappe.whitelist()
 def callback(*args, **kwargs):
-	migrator = frappe.get_doc("Xero Migrator")
+	migrator = frappe.get_doc("Test 1 Xero Migrator")
 	migrator.set_indicator("Connecting to Xero")
 	migrator.code = kwargs.get("code")
 	migrator.save()
 	migrator.get_tokens()
 	migrator.xero_tenant_id = migrator.get_tenant_id()[0]["tenantId"]
+	migrator.save()
 	frappe.db.commit()
 	migrator.set_indicator("Connected to Xero")
 	# We need this page to automatically close afterwards
 	frappe.respond_as_web_page("Xero Authentication", html="<script>window.close()</script>")
 
-class XeroMigrator(Document):
+class Test1XeroMigrator(Document):
 	def __init__(self, *args, **kwargs):
-		super(XeroMigrator, self).__init__(*args, **kwargs)
+		super(Test1XeroMigrator, self).__init__(*args, **kwargs)
 		self.oauth = OAuth2Session(
 			client_id=self.client_id, redirect_uri=self.redirect_url, scope=self.scope
 		)
@@ -50,7 +53,9 @@ class XeroMigrator(Document):
 
 	@frappe.whitelist()
 	def migrate(self):	
-		frappe.enqueue_doc("Xero Migrator", "Xero Migrator", "_migrate", queue="long")
+		self._migrate()
+		#frappe.enqueue_doc("Test 1 Xero Migrator", "Test 1 Xero Migrator", "_migrate", queue="long", timeout=5000)
+
 
 	def _migrate(self):
 		try:
@@ -58,7 +63,7 @@ class XeroMigrator(Document):
 			# Add xero_id field to every document so that we can lookup by Id reference
 			# provided by documents in API responses.
 			# Also add a company field to Customer Supplier and Item
-			self._make_custom_fields() # done
+			# self._make_custom_fields() # done
 
 			self._migrate_accounts()
 
@@ -68,8 +73,9 @@ class XeroMigrator(Document):
 				"Invoice",
 				"Payment",
 				"CreditNote",
+				"Journal",
 				"BankTransaction",
-				"Asset"
+				# "Asset"
 			]
 
 			for entity in entities_for_normal_transform:
@@ -104,8 +110,19 @@ class XeroMigrator(Document):
 	
 	def get_tenant_id(self, **kwargs):
 		try:
+			kwargs["headers"] = {
+				"Accept": "application/json",
+				"Authorization": "Bearer {}".format(self.access_token),
+			}
+			# headers = {
+            # 	'Accept': 'application/json',
+            # 	'Authorization': "Bearer " + self.access_token,
+        	# }
+
 			query_uri = "https://api.xero.com/connections"
-			response = self._get(query_uri)
+			#response = self._get(query_uri)
+			response = requests.get(query_uri, **kwargs)
+
 			response_string = response.json()
 
 			return response_string
@@ -210,7 +227,7 @@ class XeroMigrator(Document):
 
 	def _migrate_entries(self, entity):
 		try:
-			pluralized_entity_name = "{}s"
+			pluralized_entity_name = "{}s".format(entity)
 			if entity == "Asset":
 				query_uri = "https://api.xero.com/assets.xro/1.0/Assets"
 			else:
@@ -231,61 +248,147 @@ class XeroMigrator(Document):
 				"CreditNote": True,
 				"Journal": True,
 				"BankTransaction": True,
-				"Asset": True
+				# "Asset": True
 			}
 
 			if entities_for_pagination[entity] == True:
 				pages = [1]
 
-				initial_response = self._get(f"{query_uri}?page={pages[0]}").json()
-				initial_entity_key = initial_response.get(pluralized_entity_name)
+			# 	initial_response = self._get(f"{query_uri}?page={pages[0]}").json()
+			# 	initial_entity_key = initial_response.get(pluralized_entity_name)
 
-				if initial_entity_key and len(initial_response[pluralized_entity_name]) != 0:
-					while pages:
-						page = pages.pop(0)  # Get the first page from the list
+			# 	if initial_entity_key and len(initial_response[pluralized_entity_name]) != 0:
+			# 		while pages:
+			# 			page = pages.pop(0)  # Get the first page from the list
 
-						# Retrieve data for the current page
-						response = self._get(f"{query_uri}?page={page}").json()
-						entity_key = response.get(pluralized_entity_name)
+			# 			# Retrieve data for the current page
+			# 			response = self._get(f"{query_uri}?page={page}").json()
+			# 			entity_key = response.get(pluralized_entity_name)
 
-						if entity_key and len(response[pluralized_entity_name]) != 0:
-							next_page = page + 1
-							uri_string = f"{query_uri}?page={next_page}"
+			# 			if entity_key and len(response[pluralized_entity_name]) != 0:
+			# 				next_page = page + 1
+			# 				uri_string = f"{query_uri}?page={next_page}"
 
-							# Retrieve data for the next page
-							content = self._get(uri_string).json()
+			# 				# Retrieve data for the next page
+			# 				content = self._get(uri_string).json()
 
-							# Preprocess and save entries
-							self._preprocess_entries(entity, content)
-							self._save_entries(entity, content)
+			# 				# Preprocess and save entries
+			# 				self._preprocess_entries(entity, content)
+			# 				self._save_entries(entity, content)
 
-							# Append the next page to pages
-							pages.append(next_page)
-			else:
-				response = self._get(uri_string)
-				content = response.json()
+			# 				# Append the next page to pages
+			# 				pages.append(next_page)
+			# else:
+			# 	# self.__get(query_uri)
+			# 	#content = response.json()
 
-				self._preprocess_entries(entity, content)
-				self._save_entries(entity, content)
+			# 	# self._preprocess_entries(entity, content)
+			# 	# self._save_entries(entity, content)
 				
+			# ---------------------------------------------------------------------------
+			# single page
+			# headers = {
+			# 	"Accept": "application/json",
+			# 	"Authorization": "Bearer {}".format(self.access_token),
+			# 	"Xero-tenant-id": self.xero_tenant_id
+			# }
+			# response = requests.get(query_uri, headers=headers)
+
+			# #self._save_entries(entity, content)
+			
+			# #decoded_token = jwt.decode(self.access_token, algorithms=['RS256'], verify=False)
+
+			# if response.status_code == 200:
+			# 	response_json = response.json()
+			
+			# 	self._log_error("Response", f"Response: {response_json}{type(response_json)}")
+			# else:
+			# 	self._log_error("Response", f"Error: {response.status_code} - {response.reason} {response.headers} {response.text} {query_uri} {headers}")
+		
+			# ------------------------------------------------------------------------
+			# paginated
+				headers = {
+					"Accept": "application/json",
+					"Authorization": "Bearer {}".format(self.access_token),
+					"Xero-tenant-id": self.xero_tenant_id
+				}
+				initial_response = requests.get(f"{query_uri}?page={pages[0]}", headers=headers)
+				#initial_entity_key = initial_response.get(pluralized_entity_name)
+
+				
+
+				if initial_response.status_code == 200:
+					initial_response_json = initial_response.json()
+					
+					if pluralized_entity_name in initial_response_json and len(initial_response_json[pluralized_entity_name]) != 0:
+						self._log_error("Response", f"Response: {initial_response_json}{type(initial_response_json)} initial page{pages} len(initial_response_json[pluralized_entity_name]")	
+						while pages:
+							page = pages.pop(0)  # Get the first page from the list
+
+							# Retrieve data for the current page
+							response = requests.get(f"{query_uri}?page={page}", headers=headers)
+
+							if response.status_code == 200:
+								response_json = response.json()
+								self._log_error("Response", f"Response: {response_json}{type(response_json)} page {page}")
+
+								if pluralized_entity_name in response_json and len(response_json[pluralized_entity_name]) != 0:
+									next_page = page + 1
+									uri_string = f"{query_uri}?page={next_page}"
+
+									# Retrieve data for the next page
+									content = requests.get(uri_string, headers=headers)
+
+									# Preprocess and save entries
+									# self._preprocess_entries(entity, content)
+									# self._save_entries(entity, content)
+									if response.status_code == 200:
+										content_json = content.json()
+										self._log_error("Response", f"Response: {content_json}{type(content_json)} query uri{uri_string}")
+										# Append the next page to pages
+										pages.append(next_page)
+									else:
+										self._log_error("Response", f"Error: {content.status_code} - {content.reason} {content.headers} {content.text} {query_uri} {headers}")
+							else:
+								self._log_error("Response", f"Error: {response.status_code} - {response.reason} {response.headers} {response.text} {query_uri} {headers}")
+				else:
+					self._log_error("Response", f"Error: {initial_response.status_code} - {initial_response.reason} {initial_response.headers} {initial_response.text} {query_uri} {headers}")
+			else:
+				headers = {
+					"Accept": "application/json",
+					"Authorization": "Bearer {}".format(self.access_token),
+					"Xero-tenant-id": self.xero_tenant_id
+				}
+				response = requests.get(query_uri, headers=headers)
+
+				#self._save_entries(entity, content)
+				
+				#decoded_token = jwt.decode(self.access_token, algorithms=['RS256'], verify=False)
+
+				if response.status_code == 200:
+					response_json = response.json()
+				
+					self._log_error("Response", f"Response: {response_json}{type(response_json)}")
+				else:
+					self._log_error("Response", f"Error: {response.status_code} - {response.reason} {response.headers} {response.text} {query_uri} {headers}")	
 		except Exception as e:
-			self._log_error(e, response.text)
+			self._log_error(e)
 
 	# pulls data from Xero API
 	# each of the methods designates Xero data into ERPNext
 	# doctypes
 	def _save_entries(self, entity, entries):
 		entity_method_map = {
-			"Account": self._save_account, #EN: Account
-			"TaxRate": self._save_tax_rate, #EN: Sales and Purchase Tax
-			"Contact": self._save_contact, #EN: Customer and Supplier
+			# "Account": self._save_account, #EN: Account
+			# "TaxRate": self._save_tax_rate, #EN: Sales and Purchase Tax
+			# "Contact": self._save_contact, #EN: Customer and Supplier
 			"Item": self._save_item, #EN: Item
-			"Invoice": self._save_invoice, #EN: POS, Sales, Purchase Invoice (retrieve individual invoices to retrieve line items)
-			"Payment": self._save_payment, #EN: Payment Entry, AP and AR invoices, invoices
-			"CreditNote": self._save_credit_note, #EN: Sales Invoice; Credit Note; Payment Entry
-			"Journal": self._save_journal, #EN: Journal Entry: Xero-added transactions
-			"BankTransaction": self._save_bank_transaction, #EN: Bank Transaction
-			"Asset": self._save_asset #EN: Asset
+			# "Invoice": self._save_invoice, #EN: POS, Sales, Purchase Invoice (retrieve individual invoices to retrieve line items)
+			# "Payment": self._save_payment, #EN: Payment Entry, AP and AR invoices, invoices
+			# "CreditNote": self._save_credit_note, #EN: Sales Invoice; Credit Note; Payment Entry
+			# "Journal": self._save_journal, #EN: Journal Entry: Xero-added transactions
+			# "BankTransaction": self._save_bank_transaction, #EN: Bank Transaction
+			# "Asset": self._save_asset #EN: Asset
 
 			#"Deposit": self._save_deposit,
 			#"Advance Payment": self._save_advance_payment,
@@ -553,6 +656,7 @@ class XeroMigrator(Document):
 
 	def _save_asset(self, asset):
 		try:
+			self._log_error("Saving asset", asset)
 			if not frappe.db.exists(
 				{"doctype": "Asset", "xero_id": asset["assetId"], "company": self.company}
 			):
@@ -576,25 +680,25 @@ class XeroMigrator(Document):
 					"depreciation_posting_date": asset["bookDepreciationDetail"]["depreciationStartDate"]
 				})
 
-				if asset["assetStatus"] == "Registered":
-					asset_dict = {
-						"doctype": "Asset",
-						"item": self._get_asset_item(asset),
-						"is_existing_asset": 1,
-						"available_for_use_date": asset["bookDepreciationDetail"]["depreciationStartDate"],
-						"gross_purchase_amount": purchase_price,
-						"location": self.company,
-						"purchase_date": asset["purchaseDate"],
-					}
 
-					if not depreciation_method_mapping["bookDepreciationSetting"]["depreciationMethod"] == "None":
-						if depreciation_method_mapping["bookDepreciationSetting"]["depreciationMethod"] == "Full Depreciation":
-							asset_dict["is_fully_depreciated"] = 1
-						else:
-							asset_dict["calculate_depreciation"] = 1
-							asset_dict["finance_books"] = finance_books
-					
-					frappe.get_doc().insert(asset_dict)
+				asset_dict = {
+					"doctype": "Asset",
+					"item": self._get_asset_item(asset),
+					"is_existing_asset": 1,
+					"available_for_use_date": asset["bookDepreciationDetail"]["depreciationStartDate"],
+					"gross_purchase_amount": purchase_price,
+					"location": self.company,
+					"purchase_date": asset["purchaseDate"],
+				}
+
+				if not depreciation_method_mapping["bookDepreciationSetting"]["depreciationMethod"] == "None":
+					if depreciation_method_mapping["bookDepreciationSetting"]["depreciationMethod"] == "Full Depreciation":
+						asset_dict["is_fully_depreciated"] = 1
+					else:
+						asset_dict["calculate_depreciation"] = 1
+						asset_dict["finance_books"] = finance_books
+				
+				frappe.get_doc().insert(asset_dict)
 
 		except Exception as e:
 			self._log_error(e, asset)
@@ -623,20 +727,57 @@ class XeroMigrator(Document):
 		except Exception as e:
 			self._log_error(e, asset)
 
-	def _get(self, *args, **kwargs):
+	def __get(self, *args, **kwargs):
 		kwargs["headers"] = {
 			"Accept": "application/json",
 			"Authorization": "Bearer {}".format(self.access_token),
 			"Xero-tenant-id": self.xero_tenant_id
 		}
+
 		response = requests.get(*args, **kwargs)
 		# HTTP Status code 401 here means that the access_token is expired
 		# We can refresh tokens and retry
 		# However limitless recursion does look dangerous
-		if response.status_code == 401:
-			self._refresh_tokens()
-			response = self._get(*args, **kwargs)
+		# if response.status_code == 401:
+		# 	self._refresh_tokens()
+		# 	response = self._get(*args, **kwargs)
+		
 		return response
+
+	def _get(self, *args, **kwargs):
+		try:
+			headers = {
+				"Accept": "application/json",
+				"Authorization": "Bearer {}".format(self.access_token),
+				"Xero-tenant-id": self.xero_tenant_id
+			}
+
+			print("Request Headers:", headers)
+
+			response = requests.get(*args, headers=headers, **kwargs, timeout=5000)
+			message="\n".join(
+				[
+					f"{response.status_code}",
+					json.dumps(response),
+				]
+			),
+
+			self._log_error("Response", message)		
+			# response = requests.get(*args, **kwargs)
+			# HTTP Status code 401 here means that the access_token is expired
+			# We can refresh tokens and retry
+			# However limitless recursion does look dangerous
+			if response.status_code == 401:
+				self._refresh_tokens()
+				response = self._get(*args, **kwargs)
+			
+			return response
+		except requests.exceptions.HTTPError as err:
+			print(f"HTTP Error: {err}")
+		except requests.exceptions.RequestException as err:
+			print(f"An error occurred: {err}")
+		except Exception as err:
+			print(f"Unexpected error: {err}")
 
 	def _get_unique_account_name(self, xero_name, number=0):
 		if number:
@@ -1352,23 +1493,6 @@ class XeroMigrator(Document):
 		except Exception as e:
 			self._log_error(e, bank)
 
-	def _save_asset(self, asset):
-		try:
-			if asset["assetStatus"] == "REGISTERED":
-				if not frappe.db.exists(
-					{"doctype": "Asset", "xero_id": asset["assetId"], "company": self.company}
-				):
-					frappe.get_doc({
-						"doctype": "Asset",
-						"xero_id": asset["assetId"],
-						"item_code": self._get_asset_item_code(asset["assetNumber"]),
-						"is_existing_asset": 1,
-						"gross_purchase_amount": asset["purchasePrice"],
-						"purchase_date": asset["purchaseDate"]
-					}).insert()
-		except Exception as e:
-			self._log_error(e, asset)
-
 	def get_date_from_timestamp(self, timestamp_string):
 		timestamp = int(timestamp_string.split('(')[1].split('+')[0])
 		date_object = datetime.utcfromtimestamp(timestamp / 1000.0)
@@ -1406,3 +1530,6 @@ class XeroMigrator(Document):
 		formatted_date = date_object.strftime("%Y-%m-%d")
 
 		return formatted_date
+	
+	def _publish(self, *args, **kwargs):
+		frappe.publish_realtime("quickbooks_progress_update", *args, **kwargs, user=self.modified_by)
