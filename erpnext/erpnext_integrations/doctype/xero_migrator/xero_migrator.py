@@ -123,7 +123,7 @@ class XeroMigrator(Document):
 			"Journal Entry",
 			"Purchase Invoice",
 			"Payment Entry",
-			"BankTransaction",
+			"Bank Transaction",
 			"Asset"
 		]
 		for doctype in doctypes_for_xero_id_field:
@@ -1044,7 +1044,6 @@ class XeroMigrator(Document):
 				field_type = field_for_transaction_amount_mapping["DEPOSIT"]
 
 			xero_id = "Bank Transaction - {}".format(bank_transaction["BankTransactionID"])
-			payment_entries = []
 
 			if not frappe.db.exists(
 				{"doctype": "Bank Transaction", "xero_id": bank_transaction["BankTransactionID"], "company": self.company}
@@ -1060,13 +1059,13 @@ class XeroMigrator(Document):
 					"date": bank_transaction["DateString"],
 					"bank_account": bank_transaction["BankAccount"]["Name"],
 					"currency": bank_transaction["CurrencyCode"],
-					"reference_number": bank_transaction["Reference"],
 					"allocated_amount": bank_transaction["Total"],
 				}
 
-			if "BatchPayment" in bank_transaction:
-				bank_transaction_dict["payment_entries"] = payment_entries
-			frappe.get_doc(bank_transaction_dict).insert()
+				if "Reference" in bank_transaction:
+					bank_transaction_dict["reference_number"] = bank_transaction["Reference"]
+
+				frappe.get_doc(bank_transaction_dict).insert()
 
 		except Exception as e:
 			self._log_error(e, bank_transaction)

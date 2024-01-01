@@ -9,13 +9,8 @@ frappe.ui.form.on("Xero Migrator", {
 		window.open(frm.doc.authorization_url)
 	},
     fetch_data: function(frm) {
-		response = frm.call("migrate")
-        // console.log(frm.doc.xero_tenant_id)
-        // console.log(response)
+		frm.call("migrate")
 	},
-    clear_access_token: function(frm) {
-        frm.call("clear_access_token")
-    },
     onload: function(frm) {
 		frm.trigger("set_indicator")
 		var domain = frappe.urllib.get_base_url()
@@ -36,16 +31,13 @@ frappe.ui.form.on("Xero Migrator", {
 	},
     refresh: function(frm) {
 		frm.trigger("set_indicator")
-        // frm.add_custom_button(__("Retry Connecting to Xero"), function () {
-        //     frm.trigger("connect")
-        // });
 		if (!frm.doc.access_token) {
 			// Unset access_token signifies that we don't have enough information to connect to Xero API and fetch data
-			// if (frm.doc.authorization_url) {
+			if (frm.doc.authorization_url) {
 				frm.add_custom_button(__("Connect to Xero"), function () {
 					frm.trigger("connect")
 				});
-			// }
+			}
 		}
 		if (frm.doc.access_token) {
 			// If we have access_token that means we also have refresh_token we don't need user intervention anymore
