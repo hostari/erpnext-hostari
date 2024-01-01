@@ -68,13 +68,13 @@ class Test1XeroMigrator(Document):
 			self._migrate_accounts()
 
 			entities_for_normal_transform = [
-				"Contact",
+				# "Contact",
 				"Item",
 				"Invoice",
-				"Payment",
-				"CreditNote",
-				"Journal",
-				"BankTransaction",
+				# "Payment",
+				# "CreditNote",
+				# "Journal",
+				# "BankTransaction",
 				# "Asset"
 			]
 
@@ -239,15 +239,15 @@ class Test1XeroMigrator(Document):
 			# fetch pages and accumulate
 				
 			entities_for_pagination = {
-				"Account": False,
-				"TaxRate": False,
-				"Contact": True,
+				# "Account": False,
+				# "TaxRate": False,
+				# "Contact": True,
 				"Item": False,
 				"Invoice": True,
-				"Payment": True,
-				"CreditNote": True,
-				"Journal": True,
-				"BankTransaction": True,
+				# "Payment": True,
+				# "CreditNote": True,
+				# "Journal": True,
+				# "BankTransaction": True,
 				# "Asset": True
 			}
 
@@ -307,15 +307,15 @@ class Test1XeroMigrator(Document):
 		
 			# ------------------------------------------------------------------------
 			# paginated
-				headers = {
-					"Accept": "application/json",
-					"Authorization": "Bearer {}".format(self.access_token),
-					"Xero-tenant-id": self.xero_tenant_id
-				}
-				initial_response = requests.get(f"{query_uri}?page={pages[0]}", headers=headers)
+				# headers = {
+				# 	"Accept": "application/json",
+				# 	"Authorization": "Bearer {}".format(self.access_token),
+				# 	"Xero-tenant-id": self.xero_tenant_id
+				# }
+				# initial_response = requests.get(f"{query_uri}?page={pages[0]}", headers=headers)
 				#initial_entity_key = initial_response.get(pluralized_entity_name)
 
-				
+				initial_response = self._get(f"{query_uri}?page={pages[0]}")
 
 				if initial_response.status_code == 200:
 					initial_response_json = initial_response.json()
@@ -326,7 +326,7 @@ class Test1XeroMigrator(Document):
 							page = pages.pop(0)  # Get the first page from the list
 
 							# Retrieve data for the current page
-							response = requests.get(f"{query_uri}?page={page}", headers=headers)
+							response = self._get(f"{query_uri}?page={page}")
 
 							if response.status_code == 200:
 								response_json = response.json()
@@ -337,7 +337,7 @@ class Test1XeroMigrator(Document):
 									uri_string = f"{query_uri}?page={next_page}"
 
 									# Retrieve data for the next page
-									content = requests.get(uri_string, headers=headers)
+									content = self._get(uri_string)
 
 									# Preprocess and save entries
 									# self._preprocess_entries(entity, content)
@@ -727,42 +727,32 @@ class Test1XeroMigrator(Document):
 		except Exception as e:
 			self._log_error(e, asset)
 
-	def __get(self, *args, **kwargs):
-		kwargs["headers"] = {
-			"Accept": "application/json",
-			"Authorization": "Bearer {}".format(self.access_token),
-			"Xero-tenant-id": self.xero_tenant_id
-		}
+	# def __get(self, *args, **kwargs):
+	# 	kwargs["headers"] = {
+	# 		"Accept": "application/json",
+	# 		"Authorization": "Bearer {}".format(self.access_token),
+	# 		"Xero-tenant-id": self.xero_tenant_id
+	# 	}
 
-		response = requests.get(*args, **kwargs)
-		# HTTP Status code 401 here means that the access_token is expired
-		# We can refresh tokens and retry
-		# However limitless recursion does look dangerous
-		# if response.status_code == 401:
-		# 	self._refresh_tokens()
-		# 	response = self._get(*args, **kwargs)
+	# 	response = requests.get(*args, **kwargs)
+	# 	# HTTP Status code 401 here means that the access_token is expired
+	# 	# We can refresh tokens and retry
+	# 	# However limitless recursion does look dangerous
+	# 	# if response.status_code == 401:
+	# 	# 	self._refresh_tokens()
+	# 	# 	response = self._get(*args, **kwargs)
 		
-		return response
+	# 	return response
 
 	def _get(self, *args, **kwargs):
 		try:
-			headers = {
+			kwargs["headers"] = {
 				"Accept": "application/json",
 				"Authorization": "Bearer {}".format(self.access_token),
 				"Xero-tenant-id": self.xero_tenant_id
 			}
 
-			print("Request Headers:", headers)
-
-			response = requests.get(*args, headers=headers, **kwargs, timeout=5000)
-			message="\n".join(
-				[
-					f"{response.status_code}",
-					json.dumps(response),
-				]
-			),
-
-			self._log_error("Response", message)		
+			response = requests.get(*args, **kwargs)	
 			# response = requests.get(*args, **kwargs)
 			# HTTP Status code 401 here means that the access_token is expired
 			# We can refresh tokens and retry
