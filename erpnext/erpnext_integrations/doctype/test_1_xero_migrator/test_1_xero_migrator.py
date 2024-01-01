@@ -68,14 +68,14 @@ class Test1XeroMigrator(Document):
 			self._migrate_accounts()
 
 			entities_for_normal_transform = [
-				# "Contact",
+				"Contact",
 				"Item",
 				"Invoice",
-				# "Payment",
-				# "CreditNote",
-				# "Journal",
-				# "BankTransaction",
-				# "Asset"
+				"Payment",
+				"CreditNote",
+				"Journal",
+				"BankTransaction",
+				"Asset"
 			]
 
 			for entity in entities_for_normal_transform:
@@ -239,16 +239,16 @@ class Test1XeroMigrator(Document):
 			# fetch pages and accumulate
 				
 			entities_for_pagination = {
-				# "Account": False,
-				# "TaxRate": False,
-				# "Contact": True,
+				"Account": False,
+				"TaxRate": False,
+				"Contact": True,
 				"Item": False,
 				"Invoice": True,
-				# "Payment": True,
-				# "CreditNote": True,
-				# "Journal": True,
-				# "BankTransaction": True,
-				# "Asset": True
+				"Payment": True,
+				"CreditNote": True,
+				"Journal": True,
+				"BankTransaction": True,
+				"Asset": True
 			}
 
 			if entities_for_pagination[entity] == True:
@@ -307,14 +307,6 @@ class Test1XeroMigrator(Document):
 		
 			# ------------------------------------------------------------------------
 			# paginated
-				# headers = {
-				# 	"Accept": "application/json",
-				# 	"Authorization": "Bearer {}".format(self.access_token),
-				# 	"Xero-tenant-id": self.xero_tenant_id
-				# }
-				# initial_response = requests.get(f"{query_uri}?page={pages[0]}", headers=headers)
-				#initial_entity_key = initial_response.get(pluralized_entity_name)
-
 				initial_response = self._get(f"{query_uri}?page={pages[0]}")
 
 				if initial_response.status_code == 200:
@@ -359,11 +351,9 @@ class Test1XeroMigrator(Document):
 					"Authorization": "Bearer {}".format(self.access_token),
 					"Xero-tenant-id": self.xero_tenant_id
 				}
-				response = requests.get(query_uri, headers=headers)
+				response = self._get(query_uri, headers=headers)
 
 				#self._save_entries(entity, content)
-				
-				#decoded_token = jwt.decode(self.access_token, algorithms=['RS256'], verify=False)
 
 				if response.status_code == 200:
 					response_json = response.json()
@@ -382,7 +372,7 @@ class Test1XeroMigrator(Document):
 			# "Account": self._save_account, #EN: Account
 			# "TaxRate": self._save_tax_rate, #EN: Sales and Purchase Tax
 			# "Contact": self._save_contact, #EN: Customer and Supplier
-			"Item": self._save_item, #EN: Item
+			# "Item": self._save_item, #EN: Item
 			# "Invoice": self._save_invoice, #EN: POS, Sales, Purchase Invoice (retrieve individual invoices to retrieve line items)
 			# "Payment": self._save_payment, #EN: Payment Entry, AP and AR invoices, invoices
 			# "CreditNote": self._save_credit_note, #EN: Sales Invoice; Credit Note; Payment Entry
