@@ -158,9 +158,10 @@ class XeroJournalsMigrator(Document):
 			}
 			
 			if entities_for_pagination[entity] == True and entities_for_offset[entity] == False:
-				self._query_by_pages(query_uri, pluralized_entity_name)
+				#self._query_by_pages(query_uri, pluralized_entity_name)
+				self.query_with_pagination(entity)
 			if entities_for_pagination[entity] == False and entities_for_offset[entity] == True:
-				self._query_by_offset(query_uri, pluralized_entity_name, offsetter[entity])
+				self._query_with_offset(entity, offsetter[entity])
 			else:				
 				response = self._get(query_uri)
 
@@ -214,47 +215,86 @@ class XeroJournalsMigrator(Document):
 		else:
 			self._log_error("Response", f"Error: {initial_response.status_code} - {initial_response.reason} {initial_response.headers} {initial_response.text} {query_uri}")
 
-	def _query_by_offset(self, query_uri, pluralized_entity_name, offsetter):
-		offset_values = []
-		last_offset_values = []
-
-		initial_response = self._get(query_uri) # Gets results using the query URI that doesn't have offset param
-
-		if initial_response.status_code == 200:
-			initial_response_json = initial_response.json()
-			if pluralized_entity_name in initial_response_json and len(initial_response_json[pluralized_entity_name]) != 0: # Checks if the response is not empty
-				self._log_error("Response", f"Response: {initial_response_json}{type(initial_response_json)} query uri{query_uri} LINE1")
-				entity_entries = initial_response_json[pluralized_entity_name]
-
-				for entity_entry in entity_entries:
-					offset_values.append(entity_entry[offsetter]) # Iterates through the array and gets the list of JournalNumbers
-				
-				last_offset_value = offset_values[-1] # The last offset value is used to get the next batch of journals
-				last_offset_values.append(last_offset_value)
-
-				while last_offset_values:
-					last_offset_value = last_offset_values.pop(0)  # Get the first page from the list
-					uri_string = f"{query_uri}?offset={last_offset_value}"
-					response = self._get(f"{query_uri}?offset={last_offset_value}")
-
-					if response.status_code == 200:
-						response_json = response.json()
-						if pluralized_entity_name in response_json and len(response_json[pluralized_entity_name]) != 0:
-
-							self._log_error("Response", f"Response: {response_json}{type(response_json)} query uri{uri_string} LINE2")
-
-							next_offset_value = last_offset_value + 100
-							uri_string = f"{query_uri}?offset={next_offset_value}"
-
-							content = self._get(uri_string)
-							if response.status_code == 200:
-								content_json = content.json()
-								self._log_error("Response", f"Response: {content_json}{type(content_json)} query uri{uri_string} LINE3")
-								# Append the next page to pages
-								last_offset_values.append(next_offset_value)
-							else:
-								self._log_error("Response", f"Error: {content.status_code} - {content.reason} {content.headers} {content.text} {query_uri}")
 	
+	def query_with_pagination(self, entity):
+		pluralized_entity_name = "{}s".format(entity)
+		query_uri = "{}/{}".format(
+			self.api_endpoint,
+			pluralized_entity_name,
+		)
+
+		entries = []
+		pages = [1] 
+
+		try:
+			while pages:
+				next_page_url = f"{query_uri}?page={pages[0]}"
+				response = self._get(next_page_url)
+
+				if pluralized_entity_name in response and response.status_code == 200:
+					results = response.json()[pluralized_entity_name]
+					current_page = pages.pop(0)
+
+					if len(results) != 0:
+						entries.extend(results)
+						next_page = current_page + 1
+
+						pages.append(next_page)	
+		except Exception as e:
+			self._log_error(e)
+
+	def _query_with_offset(self, entity, offsetter):
+		pluralized_entity_name = "{}s".format(entity)
+		query_uri = "{}/{}".format(
+			self.api_endpoint,
+			pluralized_entity_name,
+		)
+
+		try:
+			entries = []
+			offset_values = []
+			last_offset_values = []
+
+			# check the first page without offset
+			response = self._get(query_uri)
+
+			if response.status_code == 200:
+				response_json = response.json()
+
+				if pluralized_entity_name in response_json and len(response_json[pluralized_entity_name]) != 0:
+					results = response_json[pluralized_entity_name]
+				
+					for result in results:
+						offset_values.append(result[offsetter])
+
+					last_offset_value = offset_values[-1]
+					last_offset_values.append(last_offset_value)
+
+				if offset_values:						
+					entries.extend(results)
+								
+					while last_offset_values:
+						current_page = last_offset_values.pop(0)
+
+						next_page_url = f"{query_uri}?offset={current_page}"
+						response = self._get(next_page_url)
+
+						if response.status_code == 200:
+							response_json = response.json()
+
+							if pluralized_entity_name in response_json:
+								results = response_json[pluralized_entity_name]
+
+								if len(results) != 0:
+									entries.extend(results)
+									next_page = current_page + 100
+
+									last_offset_values.append(next_page)	
+			
+			return entries
+		except Exception as e:
+			self._log_error(e)
+
 	def _get(self, *args, **kwargs):
 		try:
 			kwargs["headers"] = {
@@ -322,3 +362,207 @@ class XeroJournalsMigrator(Document):
 				]
 			),
 		)
+
+	def _preprocess_entries(self, entity, entries):
+		entity_method_map = {
+			"TaxRate": self._preprocess_tax_rates,
+		}
+		preprocessor = entity_method_map.get(entity)
+		if preprocessor:
+			entries = preprocessor(entries)
+		return entries
+	
+	def _save_entries(self, entity, entries):
+		entity_method_map = {
+			"Account": self._save_account, #EN: Account
+			"TaxRate": self._save_tax_rate, #EN: Sales and Purchase Tax
+			"Journal": self._save_journal, #EN: Journal Entry: Xero-added transactions
+		}
+		total = len(entries)
+		for index, entry in enumerate(entries, start=1):
+			self._publish(
+				{
+					"event": "progress",
+					"message": _("Saving {0}").format(entity),
+					"count": index,
+					"total": total,
+				}
+			)
+			entity_method_map[entity](entry)
+		frappe.db.commit()
+	
+	def _save_account(self, account):
+		# Account Class in Xero
+		root_account_mapping = {
+			"ASSET": "Asset",
+			"EQUITY": "Equity",
+			"EXPENSE": "Expense",
+			"LIABILITY": "Liability",
+			"REVENUE": "Income"
+		}
+		
+		try:
+			if not frappe.db.exists(
+				{"doctype": "Account", "xero_id": account["AccountID"], "company": self.company}
+			):
+				account_type = account["Type"]
+
+				account_dict = {
+					"doctype": "Account",
+					"xero_id": account["AccountID"],
+					"account_number": account["Code"],
+					"account_name": self._get_unique_account_name(account["Name"]),
+					"root_type": root_account_mapping[account["Class"]],
+					"account_type": self._get_account_type(account),
+					"company": self.company,
+				}
+
+				if account_type == "BANK":
+					account_dict["account_currency"] = account["CurrencyCode"]
+					self._create_bank_account
+
+				#frappe.get_doc(account_dict).insert()
+				self._log_error("Response", f"Response: account dict {account_dict}")
+		except Exception as e:
+			self._log_error(e, account)
+
+	def _create_bank_account(self, account):
+		try:
+
+			if frappe.db.exists(
+				{"doctype": "Bank", "xero_id":  account["AccountID"], "company": self.company}
+			):
+				bank = frappe.get_all(
+					"Bank",
+					filters={
+						"name": account["Name"],
+						"company": self.company,
+					},
+					fields=["name", "customer", "debit_to"],
+				)[0]
+			else:
+				bank = self._create_bank(account["Name"])
+		
+
+			if not frappe.db.exists(
+				{"doctype": "Bank Account", "xero_id": account["AccountID"], "company": self.company}
+			):
+				bank_account_dict = {
+					"doctype": "Bank Account",
+					"xero_id": account["AccountID"],
+					"account_name": bank["name"],
+					"account_type": account["BankAccountType"],
+					"bank_account_no": account["BankAccountNumber"],
+				}
+				
+				#frappe.get_doc(bank_account_dict).insert()
+
+				self._log_error("Response", f"Response: bank account dict {bank_account_dict}")
+				
+		except Exception as e:
+			self._log_error(e, account)
+	
+	def _create_bank(self, bank):
+		try:
+			if not frappe.db.exists(
+				{"doctype": "Bank", "name": bank, "company": self.company}
+			):
+				bank_dict = {
+					"doctype": "Bank",
+					"bank_name": bank,	
+				}
+				#frappe.get_doc(bank_dict).insert()
+
+				self._log_error("Response", f"Response: bank dict {bank_dict}")
+		except Exception as e:
+			self._log_error(e, bank)
+
+	def _save_tax_rate(self, tax_rate):
+		try:
+			if not frappe.db.exists(
+				{
+					"doctype": "Account",
+					"xero_id": "TaxRate - {}".format(tax_rate["TaxType"]),
+					"company": self.company,
+				}
+			):
+				tax_rate_dict = {
+					"doctype": "Account",
+					"xero_id": "TaxRate - {}".format(tax_rate["TaxType"]),
+					"account_name": "{} - Xero".format(tax_rate["Name"]),
+					"root_type": "Liability",
+					"parent_account": encode_company_abbr("{} - Xero".format("Liability"), self.company),
+					"is_group": "0",
+					"company": self.company,
+					}
+				#frappe.get_doc(tax_rate_dict).insert()
+
+				self._log_error("Response", f"Response: tax rate dict {tax_rate_dict}")
+
+		except Exception as e:
+			self._log_error(e, tax_rate)
+
+	def _save_journal(self, journal):
+		# Journal is equivalent to a Xero-added journal entry
+		def _get_je_accounts(lines):
+			# Converts JounalEntry lines to accounts list
+			posting_type_field_mapping = {
+				"Credit": "credit_in_account_currency",
+				"Debit": "debit_in_account_currency",
+			}
+
+			accounts = []
+			
+			for line in lines:
+				line_amount_abs_value = abs(line["LineAmount"])
+				account_name = self._get_account_name_by_code(
+					line["AccountCode"]
+				)
+				# In Xero, the use of (+) and (-) signs only signify the placement of the amount (debit or credit column)
+				# In ERPNext, amount will be saved as absolute values
+
+				if line["LineAmount"] > 0:
+					posting_type = "Debit"
+				elif line["LineAmount"] < 0:
+					posting_type = "Credit"
+
+				accounts.append(
+					{
+						"account": account_name,
+						posting_type_field_mapping[posting_type]: line_amount_abs_value,
+						"cost_center": self.default_cost_center,
+					}
+				)
+			return accounts
+
+		xero_id = "Journal Entry - {}".format(journal["JournalID"])
+		accounts = _get_je_accounts(journal["JournalLines"])
+		posting_date = self.json_date_parser(journal["Date"])
+		title = journal["Description"]
+		self.__save_journal_entry(xero_id, accounts, title, posting_date)
+
+	def __save_journal_entry(self, xero_id, accounts, title, posting_date):
+		try:
+			if not frappe.db.exists(
+				{"doctype": "Journal Entry", "xero_id": xero_id, "company": self.company}
+			):
+				je_dict = {
+					"doctype": "Journal Entry",
+					"xero_id": xero_id,
+					"company": self.company,
+					"posting_date": posting_date,
+					"accounts": accounts,
+					"multi_currency": 1,
+					"accounts":  accounts,
+					"title": title,
+					}
+				# je = frappe.get_doc(je_dict)
+				# je.insert()
+				# je.submit()
+
+				self._log_error("Response", f"Response: journal entry dict {je_dict}")
+		except Exception as e:
+			self._log_error(e, [accounts, je_dict])
+
+	def _publish(self, *args, **kwargs):
+		frappe.publish_realtime("xero_progress_update", *args, **kwargs, user=self.modified_by)

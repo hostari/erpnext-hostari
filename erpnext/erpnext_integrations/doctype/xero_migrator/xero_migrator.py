@@ -1406,3 +1406,6 @@ class XeroMigrator(Document):
 		formatted_date = date_object.strftime("%Y-%m-%d")
 
 		return formatted_date
+	
+	def _publish(self, *args, **kwargs):
+		frappe.publish_realtime("xero_progress_update", *args, **kwargs, user=self.modified_by)
