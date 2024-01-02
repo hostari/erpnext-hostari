@@ -1,0 +1,204 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2024-01-02 00:11:45.973949",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "status",
+  "application_settings",
+  "client_id",
+  "redirect_url",
+  "token_endpoint",
+  "application_column_break",
+  "client_secret",
+  "scope",
+  "api_endpoint",
+  "authorization_settings_section",
+  "authorization_endpoint",
+  "refresh_token",
+  "code",
+  "authorization_column_break",
+  "authorization_url",
+  "access_token",
+  "xero_tenant_id",
+  "company_settings_section",
+  "company",
+  "default_shipping_account",
+  "default_warehouse",
+  "company_column_break",
+  "default_cost_center",
+  "undeposited_funds_account"
+ ],
+ "fields": [
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Status",
+   "options": "\"Connecting to Xero\\nConnected to Xero\\nIn Progress\\nComplete\\nFailed\""
+  },
+  {
+   "collapsible": 1,
+   "collapsible_depends_on": "eval:doc.client_id && doc.client_secret && doc.redirect_url",
+   "fieldname": "application_settings",
+   "fieldtype": "Section Break",
+   "label": "Application Status"
+  },
+  {
+   "fieldname": "client_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Client ID",
+   "reqd": 1
+  },
+  {
+   "fieldname": "redirect_url",
+   "fieldtype": "Data",
+   "label": "Redirect URL",
+   "reqd": 1
+  },
+  {
+   "fieldname": "token_endpoint",
+   "fieldtype": "Data",
+   "label": "Token Endpoint",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "client_secret",
+   "fieldtype": "Data",
+   "label": "Client Secret",
+   "reqd": 1
+  },
+  {
+   "default": "offline_access accounting.transactions accounting.journals.read profile accounting.contacts email accounting.settings assets openid",
+   "fieldname": "scope",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Scope",
+   "reqd": 1
+  },
+  {
+   "default": "https://api.xero.com/api.xro/2.0",
+   "fieldname": "api_endpoint",
+   "fieldtype": "Data",
+   "label": "API Endpoint",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "authorization_settings_section",
+   "fieldtype": "Section Break",
+   "label": "Authorization Settings"
+  },
+  {
+   "fieldname": "authorization_endpoint",
+   "fieldtype": "Data",
+   "label": "Authorization Endpoint",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "refresh_token",
+   "fieldtype": "Small Text",
+   "label": "Refresh Token"
+  },
+  {
+   "fieldname": "code",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Code"
+  },
+  {
+   "fieldname": "authorization_url",
+   "fieldtype": "Data",
+   "label": "Authorization URL",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "access_token",
+   "fieldtype": "Small Text",
+   "hidden": 1,
+   "label": "Access Token"
+  },
+  {
+   "fieldname": "xero_tenant_id",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Xero Tenant ID"
+  },
+  {
+   "fieldname": "company_settings_section",
+   "fieldtype": "Section Break",
+   "label": "Company Settings"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "default_shipping_account",
+   "fieldtype": "Link",
+   "label": "Default Shipping Account",
+   "options": "Account"
+  },
+  {
+   "fieldname": "default_warehouse",
+   "fieldtype": "Link",
+   "label": "Default Warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "default_cost_center",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Default Cost Center",
+   "options": "Cost Center"
+  },
+  {
+   "fieldname": "undeposited_funds_account",
+   "fieldtype": "Link",
+   "label": "Undeposited Funds Account",
+   "options": "Account"
+  },
+  {
+   "fieldname": "application_column_break",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "authorization_column_break",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company_column_break",
+   "fieldtype": "Column Break"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2024-01-02 00:40:06.577696",
+ "modified_by": "Administrator",
+ "module": "ERPNext Integrations",
+ "name": "Xero Journals Migrator",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
