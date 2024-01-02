@@ -158,9 +158,8 @@ class XeroJournalsMigrator(Document):
 			}
 			
 			if entities_for_pagination[entity] == True and entities_for_offset[entity] == False:
-				#self._query_by_pages(query_uri, pluralized_entity_name)
 				self.query_with_pagination(entity)
-			if entities_for_pagination[entity] == False and entities_for_offset[entity] == True:
+			elif entities_for_pagination[entity] == False and entities_for_offset[entity] == True:
 				self._query_with_offset(entity, offsetter[entity])
 			else:				
 				response = self._get(query_uri)
@@ -230,16 +229,19 @@ class XeroJournalsMigrator(Document):
 			while pages:
 				next_page_url = f"{query_uri}?page={pages[0]}"
 				response = self._get(next_page_url)
+				current_page = pages.pop(0)
 
-				if pluralized_entity_name in response and response.status_code == 200:
-					results = response.json()[pluralized_entity_name]
-					current_page = pages.pop(0)
+				if response.status_code == 200:
+					response_json = response.json()
+					if pluralized_entity_name in response_json:
+						results = response_json[pluralized_entity_name]
+						
+						if len(results) != 0:
+							entries.extend(results)
+							next_page = current_page + 1
 
-					if len(results) != 0:
-						entries.extend(results)
-						next_page = current_page + 1
-
-						pages.append(next_page)	
+							pages.append(next_page)
+			return entries
 		except Exception as e:
 			self._log_error(e)
 
@@ -290,7 +292,6 @@ class XeroJournalsMigrator(Document):
 									next_page = current_page + 100
 
 									last_offset_values.append(next_page)	
-			
 			return entries
 		except Exception as e:
 			self._log_error(e)
