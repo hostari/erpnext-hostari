@@ -158,9 +158,9 @@ class XeroJournalsMigrator(Document):
 			}
 			
 			if entities_for_pagination[entity] == True and entities_for_offset[entity] == False:
-				self.query_with_pagination(entity)
+				results = self.query_with_pagination(entity)
 			elif entities_for_pagination[entity] == False and entities_for_offset[entity] == True:
-				self._query_with_offset(entity, offsetter[entity])
+				results = self._query_with_offset(entity, offsetter[entity])
 			else:				
 				response = self._get(query_uri)
 
@@ -168,52 +168,13 @@ class XeroJournalsMigrator(Document):
 
 				if response.status_code == 200:
 					response_json = response.json()
-				
-					self._log_error("Response", f"Response: {response_json}{type(response_json)}")
-				else:
-					self._log_error("Response", f"Error: {response.status_code} - {response.reason} {response.headers} {response.text} {query_uri}")
+
+					if pluralized_entity_name in response_json and response_json[pluralized_entity_name]:
+						results = response_json[pluralized_entity_name]
+						
+			self._save_entries(entity, results)
 		except Exception as e:
 			self._log_error(e)
-
-	def _query_by_pages(self, query_uri, pluralized_entity_name):
-		pages = [1]
-		initial_response = self._get(f"{query_uri}?page={pages[0]}")
-
-		if initial_response.status_code == 200:
-			initial_response_json = initial_response.json()
-
-			if pluralized_entity_name in initial_response_json and len(initial_response_json[pluralized_entity_name]) != 0:
-				while pages:
-					page = pages.pop(0)  # Get the first page from the list
-
-					# Retrieve data for the current page
-					response = self._get(f"{query_uri}?page={page}")
-
-					if response.status_code == 200:
-						response_json = response.json()
-						self._log_error("Response", f"Response: {response_json}{type(response_json)} page{page}")
-						if pluralized_entity_name in response_json and len(response_json[pluralized_entity_name]) != 0:
-							next_page = page + 1
-							uri_string = f"{query_uri}?page={next_page}"
-
-							# Retrieve data for the next page
-							content = self._get(uri_string)
-
-							# Preprocess and save entries
-							# self._preprocess_entries(entity, content)
-							# self._save_entries(entity, content)
-							if response.status_code == 200:
-								content_json = content.json()
-								self._log_error("Response", f"Response: {content_json}{type(content_json)} query uri{uri_string}")
-								# Append the next page to pages
-								pages.append(next_page)
-							else:
-								self._log_error("Response", f"Error: {content.status_code} - {content.reason} {content.headers} {content.text} {query_uri}")
-					else:
-						self._log_error("Response", f"Error: {response.status_code} - {response.reason} {response.headers} {response.text} {query_uri}")
-		else:
-			self._log_error("Response", f"Error: {initial_response.status_code} - {initial_response.reason} {initial_response.headers} {initial_response.text} {query_uri}")
-
 	
 	def query_with_pagination(self, entity):
 		pluralized_entity_name = "{}s".format(entity)
@@ -374,6 +335,7 @@ class XeroJournalsMigrator(Document):
 		return entries
 	
 	def _save_entries(self, entity, entries):
+		self._log_error("Response", f"Response: account dict {entries} def _save_entries(self, entity, entries):")
 		entity_method_map = {
 			"Account": self._save_account, #EN: Account
 			"TaxRate": self._save_tax_rate, #EN: Sales and Purchase Tax
@@ -515,6 +477,12 @@ class XeroJournalsMigrator(Document):
 			accounts = []
 			
 			for line in lines:
+				net_amount = line["NetAmount"]
+				tax_amount = line["Tax Amount"]
+				gross_amount = line["GrossAmount"]
+
+				
+
 				line_amount_abs_value = abs(line["LineAmount"])
 				account_name = self._get_account_name_by_code(
 					line["AccountCode"]
@@ -567,3 +535,71 @@ class XeroJournalsMigrator(Document):
 
 	def _publish(self, *args, **kwargs):
 		frappe.publish_realtime("xero_progress_update", *args, **kwargs, user=self.modified_by)
+
+	def _get_unique_account_name(self, xero_name, number=0):
+		if number:
+			xero_account_name = "{} - {} - Xero".format(xero_name, number)
+		else:
+			xero_account_name = "{} - Xero".format(xero_name)
+		company_encoded_account_name = encode_company_abbr(xero_account_name, self.company)
+		if frappe.db.exists(
+			{"doctype": "Account", "name": company_encoded_account_name, "company": self.company}
+		):
+			unique_account_name = self._get_unique_account_name(xero_name, number + 1)
+		else:
+			unique_account_name = xero_account_name
+		return unique_account_name
+		
+	def _get_account_type(self, account):
+		account_type = account["Type"]
+
+		# Xero SystemAccountattribute Value: Xero Default Account Name
+		xero_system_account_mapping = {
+			"CREDITORS": "Accounts Payable",
+			"DEBTORS":  "Accounts Receivable",
+		}
+
+		# If Account Name is a General term, use the
+		# name to classify. Or else, use the account type
+		# Xero Account Name: ERPNext Account Type
+		xero_common_account_name_mapping = {
+			"Sales": "Direct Income",
+			"Interest Income": "Income",
+			"Cost of Goods Sold": "Cost of Goods Sold",
+			"Depreciation": "Depreciation",
+			"Accounts Receivable": "Receivable",
+			"Accounts Payable": "Payable"
+		}
+
+		# Xero Account Type: ERPNext Account Type
+		xero_account_type_mapping = {
+			"BANK": "Bank",
+			"CURRENT": "Current Asset",
+			"CURRLIAB": "Current Liability",
+			"DEPRECIATN": "Depreciation",
+			"DIRECTCOSTS": "Direct Expense",
+			"EQUITY": "Equity",
+			"EXPENSE": "Expense Account",
+			"FIXED": "Fixed Asset",
+			"INVENTORY": "Current Asset",
+			"LIABILITY": "Liability",
+			"OTHERINCOME": "Income Account",
+			"OVERHEADS": "Indirect Expense",
+			"PREPAYMENT": "Prepayment",
+			"REVENUE": "Direct Income",
+			"SALES": "Direct Income",
+			"TERMLIAB": "Liability",
+			"NONCURRENT": "Non-current Asset"
+		}
+
+		xero_account_name = account["Name"]
+		xero_account_type = account["Type"]
+
+		if account["SystemAccount"] in xero_system_account_mapping:
+			account_type = xero_system_account_mapping[account["SystemAccount"]]
+		else:
+			if xero_account_name in xero_common_account_name_mapping:
+				account_type = xero_common_account_name_mapping[xero_account_name]
+			else:
+				account_type = xero_account_type_mapping[xero_account_type]
+		return account_type
