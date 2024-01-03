@@ -107,7 +107,7 @@ class XeroJournalsMigrator(Document):
 
 	def _make_root_accounts(self):
 		# classify accounts for easier reporting
-		roots = ["Asset", "Equity", "Expense", "Liability", "Income"]
+		roots = ["Asset", "Equity", "Expense", "Liability", "Revenue"]
 		for root in roots:
 			try:
 				if not frappe.db.exists(
@@ -335,7 +335,6 @@ class XeroJournalsMigrator(Document):
 		return entries
 	
 	def _save_entries(self, entity, entries):
-		self._log_error("Response", f"Response: account dict {entries} def _save_entries(self, entity, entries):")
 		entity_method_map = {
 			"Account": self._save_account, #EN: Account
 			"TaxRate": self._save_tax_rate, #EN: Sales and Purchase Tax
@@ -361,14 +360,18 @@ class XeroJournalsMigrator(Document):
 			"EQUITY": "Equity",
 			"EXPENSE": "Expense",
 			"LIABILITY": "Liability",
-			"REVENUE": "Income"
+			"REVENUE": "Revenue"
 		}
 		
 		try:
+			account_type = account["Type"]
 			if not frappe.db.exists(
 				{"doctype": "Account", "xero_id": account["AccountID"], "company": self.company}
 			):
-				account_type = account["Type"]
+				
+				parent_account = encode_company_abbr(
+						"{} - Xero".format(root_account_mapping[account["Class"]]), self.company
+					)
 
 				account_dict = {
 					"doctype": "Account",
@@ -378,14 +381,16 @@ class XeroJournalsMigrator(Document):
 					"root_type": root_account_mapping[account["Class"]],
 					"account_type": self._get_account_type(account),
 					"company": self.company,
+					"parent_account": parent_account,
+					"is_group": 0
 				}
 
-				if account_type == "BANK":
-					account_dict["account_currency"] = account["CurrencyCode"]
-					self._create_bank_account
+			if account_type == "BANK":
+				account_dict["account_currency"] = account["CurrencyCode"]
+				self._create_bank_account
 
-				#frappe.get_doc(account_dict).insert()
-				self._log_error("Response", f"Response: account dict {account_dict}")
+				frappe.get_doc(account_dict).insert()
+				#self._log_error("Response", f"Response: account dict {account_dict}")
 		except Exception as e:
 			self._log_error(e, account)
 
@@ -418,10 +423,7 @@ class XeroJournalsMigrator(Document):
 					"bank_account_no": account["BankAccountNumber"],
 				}
 				
-				#frappe.get_doc(bank_account_dict).insert()
-
-				self._log_error("Response", f"Response: bank account dict {bank_account_dict}")
-				
+				frappe.get_doc(bank_account_dict).insert()
 		except Exception as e:
 			self._log_error(e, account)
 	
@@ -434,9 +436,7 @@ class XeroJournalsMigrator(Document):
 					"doctype": "Bank",
 					"bank_name": bank,	
 				}
-				#frappe.get_doc(bank_dict).insert()
-
-				self._log_error("Response", f"Response: bank dict {bank_dict}")
+				frappe.get_doc(bank_dict).insert()
 		except Exception as e:
 			self._log_error(e, bank)
 
@@ -475,30 +475,40 @@ class XeroJournalsMigrator(Document):
 			}
 
 			accounts = []
+			descriptions = []
 			
 			for line in lines:
+				# gets the description from one of the lines
+				if "Description" in line:
+					descriptions.append(line["Description"])
+
+				# gives information if Xero amount is positive or negative
+				# In Xero, the use of (+) and (-) signs only signify the placement of the amount (debit or credit column)
+				# In ERPNext, amount will be saved as absolute values
 				net_amount = line["NetAmount"]
-				tax_amount = line["Tax Amount"]
-				gross_amount = line["GrossAmount"]
+				tax_amount = line["TaxAmount"]
 
-				
+				if tax_amount == 0: # no need to get absolute value yet if the amount is being compared to 0
+					amount = net_amount
+				else:
+					if line["TaxType"] != "NONE":
+						amount = tax_amount
 
-				line_amount_abs_value = abs(line["LineAmount"])
 				account_name = self._get_account_name_by_code(
 					line["AccountCode"]
 				)
 				# In Xero, the use of (+) and (-) signs only signify the placement of the amount (debit or credit column)
 				# In ERPNext, amount will be saved as absolute values
 
-				if line["LineAmount"] > 0:
+				if amount > 0:
 					posting_type = "Debit"
-				elif line["LineAmount"] < 0:
+				elif amount < 0:
 					posting_type = "Credit"
 
 				accounts.append(
 					{
 						"account": account_name,
-						posting_type_field_mapping[posting_type]: line_amount_abs_value,
+						posting_type_field_mapping[posting_type]: abs(amount),
 						"cost_center": self.default_cost_center,
 					}
 				)
@@ -536,6 +546,11 @@ class XeroJournalsMigrator(Document):
 	def _publish(self, *args, **kwargs):
 		frappe.publish_realtime("xero_progress_update", *args, **kwargs, user=self.modified_by)
 
+	def _get_account_name_by_code(self, account_code):
+		return frappe.get_all(
+			"Account", filters={"account_number": account_code, "company": self.company}
+		)[0]["name"]
+	
 	def _get_unique_account_name(self, xero_name, number=0):
 		if number:
 			xero_account_name = "{} - {} - Xero".format(xero_name, number)
@@ -563,8 +578,8 @@ class XeroJournalsMigrator(Document):
 		# name to classify. Or else, use the account type
 		# Xero Account Name: ERPNext Account Type
 		xero_common_account_name_mapping = {
-			"Sales": "Direct Income",
-			"Interest Income": "Income",
+			"Sales": "Sales",
+			"Interest Income": "Interest Income",
 			"Cost of Goods Sold": "Cost of Goods Sold",
 			"Depreciation": "Depreciation",
 			"Accounts Receivable": "Receivable",
@@ -577,25 +592,25 @@ class XeroJournalsMigrator(Document):
 			"CURRENT": "Current Asset",
 			"CURRLIAB": "Current Liability",
 			"DEPRECIATN": "Depreciation",
-			"DIRECTCOSTS": "Direct Expense",
+			"DIRECTCOSTS": "Direct Costs",
 			"EQUITY": "Equity",
-			"EXPENSE": "Expense Account",
+			"EXPENSE": "Expense",
 			"FIXED": "Fixed Asset",
-			"INVENTORY": "Current Asset",
+			"INVENTORY": "Inventory",
 			"LIABILITY": "Liability",
-			"OTHERINCOME": "Income Account",
-			"OVERHEADS": "Indirect Expense",
+			"OTHERINCOME": "Other Income",
+			"OVERHEADS": "Overhead",
 			"PREPAYMENT": "Prepayment",
-			"REVENUE": "Direct Income",
-			"SALES": "Direct Income",
-			"TERMLIAB": "Liability",
+			"REVENUE": "Revenue",
+			"SALES": "Sales",
+			"TERMLIAB": "Non-current Liability",
 			"NONCURRENT": "Non-current Asset"
 		}
 
 		xero_account_name = account["Name"]
 		xero_account_type = account["Type"]
 
-		if account["SystemAccount"] in xero_system_account_mapping:
+		if "SystemAccount" in xero_system_account_mapping:
 			account_type = xero_system_account_mapping[account["SystemAccount"]]
 		else:
 			if xero_account_name in xero_common_account_name_mapping:
@@ -603,3 +618,15 @@ class XeroJournalsMigrator(Document):
 			else:
 				account_type = xero_account_type_mapping[xero_account_type]
 		return account_type
+	
+	def json_date_parser(self, json_date):
+		milliseconds = int(json_date[7:20])
+		seconds = milliseconds / 1000.0
+		date_object = datetime.utcfromtimestamp(seconds)
+
+		timezone_offset = int(json_date[20:24]) * 60
+		date_object = date_object - timedelta(minutes=timezone_offset)
+
+		formatted_date = date_object.strftime("%Y-%m-%d")
+
+		return formatted_date
