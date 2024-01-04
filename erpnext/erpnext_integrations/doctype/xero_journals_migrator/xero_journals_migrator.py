@@ -52,8 +52,8 @@ class XeroJournalsMigrator(Document):
 
 	@frappe.whitelist()
 	def migrate(self):	
-		self._migrate()
-		#frappe.enqueue_doc("Xero Journals Migrator", "Xero Journals Migrator", "_migrate", queue="long", timeout=5000)
+		#self._migrate()
+		frappe.enqueue_doc("Xero Journals Migrator", "Xero Journals Migrator", "_migrate", queue="long")
 
 	def _migrate(self):
 		try:
@@ -105,7 +105,6 @@ class XeroJournalsMigrator(Document):
 	# Create a bank account number field in Account instead
 	def _create_bank_account_number_field(self):
 		doctype = "Account"
-		self._log_error("Response", f"Response: bank_account_number")
 		if not frappe.get_meta(doctype).has_field("bank_account_number"):
 			frappe.get_doc(
 				{
@@ -191,7 +190,6 @@ class XeroJournalsMigrator(Document):
 					if pluralized_entity_name in response_json and response_json[pluralized_entity_name]:
 						results = response_json[pluralized_entity_name]
 						
-			#self._log_error(entity, results)
 			self._save_entries(entity, results)
 		except Exception as e:
 			self._log_error(e)
@@ -470,9 +468,9 @@ class XeroJournalsMigrator(Document):
 				account_name = self._get_account_name_by_code(
 					line["AccountCode"]
 				)
+
 				# In Xero, the use of (+) and (-) signs only signify the placement of the amount (debit or credit column)
 				# In ERPNext, amount will be saved as absolute values
-
 				if amount > 0:
 					posting_type = "Debit"
 				elif amount < 0:
