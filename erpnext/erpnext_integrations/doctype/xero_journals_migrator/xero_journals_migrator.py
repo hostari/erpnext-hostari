@@ -9,6 +9,7 @@ import requests
 from frappe import _
 from frappe.model.document import Document
 from requests_oauthlib import OAuth2Session
+import re
 
 from datetime import datetime, timedelta
 from erpnext import encode_company_abbr
@@ -84,7 +85,6 @@ class XeroJournalsMigrator(Document):
 		for doctype in doctypes_for_xero_id_field:
 			self._make_custom_xero_id_field(doctype)
 
-		self._log_error("Response", f"Response: create bank account no")
 		self._create_bank_account_number_field()
 
 		frappe.db.commit()
@@ -177,7 +177,7 @@ class XeroJournalsMigrator(Document):
 			}
 			
 			if entities_for_pagination[entity] == True and entities_for_offset[entity] == False:
-				results = self.query_with_pagination(entity)
+				re = self.query_with_pagination(entity)
 			elif entities_for_pagination[entity] == False and entities_for_offset[entity] == True:
 				results = self._query_with_offset(entity, offsetter[entity])
 			else:				
@@ -191,6 +191,7 @@ class XeroJournalsMigrator(Document):
 					if pluralized_entity_name in response_json and response_json[pluralized_entity_name]:
 						results = response_json[pluralized_entity_name]
 						
+			#self._log_error(entity, results)
 			self._save_entries(entity, results)
 		except Exception as e:
 			self._log_error(e)
@@ -313,6 +314,18 @@ class XeroJournalsMigrator(Document):
 		self.access_token = token["access_token"]
 		self.refresh_token = token["refresh_token"]
 		self.save()
+	
+	def _refresh_tokens(self):
+		token = self.oauth.refresh_token(
+			token_url=self.token_endpoint,
+			client_id=self.client_id,
+			refresh_token=self.refresh_token,
+			client_secret=self.client_secret,
+			code=self.code,
+		)
+		self.access_token = token["access_token"]
+		self.refresh_token = token["refresh_token"]
+		self.save()
 
 	def get_tenant_id(self, **kwargs):
 		try:
@@ -344,15 +357,6 @@ class XeroJournalsMigrator(Document):
 			),
 		)
 
-	def _preprocess_entries(self, entity, entries):
-		entity_method_map = {
-			"TaxRate": self._preprocess_tax_rates,
-		}
-		preprocessor = entity_method_map.get(entity)
-		if preprocessor:
-			entries = preprocessor(entries)
-		return entries
-	
 	def _save_entries(self, entity, entries):
 		entity_method_map = {
 			"Account": self._save_account, #EN: Account
@@ -429,13 +433,16 @@ class XeroJournalsMigrator(Document):
 					"is_group": "0",
 					"company": self.company,
 					}
-				#frappe.get_doc(tax_rate_dict).insert()
+				frappe.get_doc(tax_rate_dict).insert()
 
 		except Exception as e:
 			self._log_error(e, tax_rate)
 
 	def _save_journal(self, journal):
 		# Journal is equivalent to a Xero-added journal entry
+		accounts = []
+		descriptions = []
+		
 		def _get_je_accounts(lines):
 			# Converts JounalEntry lines to accounts list
 			posting_type_field_mapping = {
@@ -443,9 +450,6 @@ class XeroJournalsMigrator(Document):
 				"Debit": "debit_in_account_currency",
 			}
 
-			accounts = []
-			descriptions = []
-			
 			for line in lines:
 				# gets the description from one of the lines
 				if "Description" in line:
@@ -461,7 +465,7 @@ class XeroJournalsMigrator(Document):
 					amount = net_amount
 				else:
 					if line["TaxType"] != "NONE":
-						amount = tax_amount
+						amount = net_amount
 
 				account_name = self._get_account_name_by_code(
 					line["AccountCode"]
@@ -481,15 +485,16 @@ class XeroJournalsMigrator(Document):
 						"cost_center": self.default_cost_center,
 					}
 				)
-			return accounts
 
+			return accounts
+			
 		xero_id = "Journal Entry - {}".format(journal["JournalID"])
 		accounts = _get_je_accounts(journal["JournalLines"])
-		posting_date = self.json_date_parser(journal["Date"])
-		title = journal["Description"]
-		self.__save_journal_entry(xero_id, accounts, title, posting_date)
+		posting_date = self.json_date_parser(journal["JournalDate"])
+		
+		self.__save_journal_entry(xero_id, accounts, descriptions, posting_date)
 
-	def __save_journal_entry(self, xero_id, accounts, title, posting_date):
+	def __save_journal_entry(self, xero_id, accounts, descriptions, posting_date):
 		try:
 			if not frappe.db.exists(
 				{"doctype": "Journal Entry", "xero_id": xero_id, "company": self.company}
@@ -501,15 +506,19 @@ class XeroJournalsMigrator(Document):
 					"posting_date": posting_date,
 					"accounts": accounts,
 					"multi_currency": 1,
-					"accounts":  accounts,
-					"title": title,
-					}
-				# je = frappe.get_doc(je_dict)
-				# je.insert()
-				# je.submit()
+				}
+				
+				if len(descriptions) != 0:
+					title = descriptions[0][:140]
+					user_remark = ",".join(descriptions)
+					je_dict["title"] = title
+					je_dict["user_remark"] = user_remark
+				je = frappe.get_doc(je_dict)
+				je.insert()
+				je.submit()
 
 		except Exception as e:
-			self._log_error(e, [accounts, je_dict])
+			self._log_error(e,)
 
 	def _publish(self, *args, **kwargs):
 		frappe.publish_realtime("xero_progress_update", *args, **kwargs, user=self.modified_by)
@@ -588,13 +597,20 @@ class XeroJournalsMigrator(Document):
 		return account_type
 	
 	def json_date_parser(self, json_date):
-		milliseconds = int(json_date[7:20])
-		seconds = milliseconds / 1000.0
-		date_object = datetime.utcfromtimestamp(seconds)
+		match = re.search(r'\((\d+)\+(\d+)\)', json_date)
 
-		timezone_offset = int(json_date[20:24]) * 60
-		date_object = date_object - timedelta(minutes=timezone_offset)
+		if match:
+			numeric_part = match.group(1)
+			milliseconds = int(numeric_part)
 
-		formatted_date = date_object.strftime("%Y-%m-%d")
+			seconds = milliseconds / 1000.0
+			date_object = datetime.utcfromtimestamp(seconds)
 
-		return formatted_date
+			offset_part = match.group(2)
+
+			timezone_offset = int(offset_part) * 60
+			date_object = date_object - timedelta(minutes=timezone_offset)
+
+			formatted_date = date_object.strftime("%Y-%m-%d")
+
+			return formatted_date
