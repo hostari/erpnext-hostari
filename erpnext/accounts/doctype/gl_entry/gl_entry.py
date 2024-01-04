@@ -43,7 +43,7 @@ class GLEntry(Document):
 		self.pl_must_have_cost_center()
 
 		if not self.flags.from_repost and self.voucher_type != "Period Closing Voucher":
-			self.check_mandatory()
+			# self.check_mandatory()
 			self.validate_cost_center()
 			self.check_pl_account()
 			self.validate_party()
