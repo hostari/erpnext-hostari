@@ -84,6 +84,9 @@ class XeroJournalsMigrator(Document):
 		for doctype in doctypes_for_xero_id_field:
 			self._make_custom_xero_id_field(doctype)
 
+		self._log_error("Response", f"Response: create bank account no")
+		self._create_bank_account_number_field()
+
 		frappe.db.commit()
 
 	def _make_custom_xero_id_field(self, doctype):
@@ -94,6 +97,22 @@ class XeroJournalsMigrator(Document):
 					"label": "Xero ID",
 					"dt": doctype,
 					"fieldname": "xero_id",
+					"fieldtype": "Data",
+				}
+			).insert()
+
+	# Xero does not expose bank name and bank information
+	# Create a bank account number field in Account instead
+	def _create_bank_account_number_field(self):
+		doctype = "Account"
+		self._log_error("Response", f"Response: bank_account_number")
+		if not frappe.get_meta(doctype).has_field("bank_account_number"):
+			frappe.get_doc(
+				{
+					"doctype": "Custom Field",
+					"label": "Bank Account Number",
+					"dt": doctype,
+					"fieldname": "bank_account_number",
 					"fieldtype": "Data",
 				}
 			).insert()
@@ -368,10 +387,9 @@ class XeroJournalsMigrator(Document):
 			if not frappe.db.exists(
 				{"doctype": "Account", "xero_id": account["AccountID"], "company": self.company}
 			):
-				
 				parent_account = encode_company_abbr(
-						"{} - Xero".format(root_account_mapping[account["Class"]]), self.company
-					)
+					"{} - Xero".format(root_account_mapping[account["Class"]]), self.company
+				)
 
 				account_dict = {
 					"doctype": "Account",
@@ -385,60 +403,13 @@ class XeroJournalsMigrator(Document):
 					"is_group": 0
 				}
 
-			if account_type == "BANK":
-				account_dict["account_currency"] = account["CurrencyCode"]
-				self._create_bank_account
+				if account_type == "BANK":
+					account_dict["account_currency"] = account["CurrencyCode"]
+					account_dict["bank_account_number"] = account["BankAccountNumber"]
 
 				frappe.get_doc(account_dict).insert()
-				#self._log_error("Response", f"Response: account dict {account_dict}")
 		except Exception as e:
 			self._log_error(e, account)
-
-	def _create_bank_account(self, account):
-		try:
-
-			if frappe.db.exists(
-				{"doctype": "Bank", "xero_id":  account["AccountID"], "company": self.company}
-			):
-				bank = frappe.get_all(
-					"Bank",
-					filters={
-						"name": account["Name"],
-						"company": self.company,
-					},
-					fields=["name", "customer", "debit_to"],
-				)[0]
-			else:
-				bank = self._create_bank(account["Name"])
-		
-
-			if not frappe.db.exists(
-				{"doctype": "Bank Account", "xero_id": account["AccountID"], "company": self.company}
-			):
-				bank_account_dict = {
-					"doctype": "Bank Account",
-					"xero_id": account["AccountID"],
-					"account_name": bank["name"],
-					"account_type": account["BankAccountType"],
-					"bank_account_no": account["BankAccountNumber"],
-				}
-				
-				frappe.get_doc(bank_account_dict).insert()
-		except Exception as e:
-			self._log_error(e, account)
-	
-	def _create_bank(self, bank):
-		try:
-			if not frappe.db.exists(
-				{"doctype": "Bank", "name": bank, "company": self.company}
-			):
-				bank_dict = {
-					"doctype": "Bank",
-					"bank_name": bank,	
-				}
-				frappe.get_doc(bank_dict).insert()
-		except Exception as e:
-			self._log_error(e, bank)
 
 	def _save_tax_rate(self, tax_rate):
 		try:
@@ -459,8 +430,6 @@ class XeroJournalsMigrator(Document):
 					"company": self.company,
 					}
 				#frappe.get_doc(tax_rate_dict).insert()
-
-				self._log_error("Response", f"Response: tax rate dict {tax_rate_dict}")
 
 		except Exception as e:
 			self._log_error(e, tax_rate)
@@ -539,7 +508,6 @@ class XeroJournalsMigrator(Document):
 				# je.insert()
 				# je.submit()
 
-				self._log_error("Response", f"Response: journal entry dict {je_dict}")
 		except Exception as e:
 			self._log_error(e, [accounts, je_dict])
 
