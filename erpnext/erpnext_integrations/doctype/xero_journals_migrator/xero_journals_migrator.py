@@ -212,7 +212,6 @@ class XeroJournalsMigrator(Document):
 						results = response_json[pluralized_entity_name]
 
 						if len(results) != 0:
-							self._log_error("Response", response_json)
 							self._save_json_data(json_content=response_json, entity=pluralized_entity_name, page="", offset="")	
 			self._save_entries(entity, results)
 		except Exception as e:
@@ -292,7 +291,6 @@ class XeroJournalsMigrator(Document):
 
 							pages.append(next_page)
 
-							self._log_error("Response", response_json)
 							self._save_json_data(json_content=response_json, entity=pluralized_entity_name, page=current_page, offset="")	
 			return entries
 		except Exception as e:
@@ -315,8 +313,6 @@ class XeroJournalsMigrator(Document):
 
 			if response.status_code == 200:
 				response_json = response.json()
-
-				self._log_error("Response", response_json)
 				
 				if pluralized_entity_name in response_json and len(response_json[pluralized_entity_name]) != 0:
 					results = response_json[pluralized_entity_name]
@@ -413,7 +409,6 @@ class XeroJournalsMigrator(Document):
 						results = response_json[scope]
 
 						if len(results) != 0:
-							self._log_error("Response", response_json)
 							self._save_json_data(json_content=response_json, entity=pluralized_scope, page="", offset="")
 		except Exception as e:
 			self._log_error(e, entity)
