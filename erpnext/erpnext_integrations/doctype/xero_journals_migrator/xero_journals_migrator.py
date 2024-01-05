@@ -10,6 +10,8 @@ from frappe import _
 from frappe.model.document import Document
 from requests_oauthlib import OAuth2Session
 import re
+import pandas as pd
+import hashlib
 
 from datetime import datetime, timedelta
 from erpnext import encode_company_abbr
@@ -52,8 +54,8 @@ class XeroJournalsMigrator(Document):
 
 	@frappe.whitelist()
 	def migrate(self):	
-		#self._migrate()
-		frappe.enqueue_doc("Xero Journals Migrator", "Xero Journals Migrator", "_migrate", queue="long")
+		self._migrate()
+		#frappe.enqueue_doc("Xero Journals Migrator", "Xero Journals Migrator", "_migrate", queue="long")
 
 	def _migrate(self):
 		try:
@@ -71,6 +73,25 @@ class XeroJournalsMigrator(Document):
 
 			for entity in entities_for_normal_transform:
 				self._migrate_entries(entity)
+
+			entities_for_download = [
+				"Bank Transactions",
+				"Bank Transfers",
+				"Batch Payments",
+				"Contacts",
+				"Credit Notes",
+				"Invoices",
+				"Items",
+				"Linked Transactions",
+				"Manual Journals",
+				"Overpayments",
+				"Payments",
+				"Prepayments",
+				"Purchase Orders"
+			]
+
+			for entity in entities_for_download:
+				self._pull_data(entity)
 
 			self.set_indicator("Complete")
 		except Exception as e:
@@ -176,7 +197,7 @@ class XeroJournalsMigrator(Document):
 			}
 			
 			if entities_for_pagination[entity] == True and entities_for_offset[entity] == False:
-				re = self.query_with_pagination(entity)
+				results = self.query_with_pagination(entity)
 			elif entities_for_pagination[entity] == False and entities_for_offset[entity] == True:
 				results = self._query_with_offset(entity, offsetter[entity])
 			else:				
@@ -189,8 +210,57 @@ class XeroJournalsMigrator(Document):
 
 					if pluralized_entity_name in response_json and response_json[pluralized_entity_name]:
 						results = response_json[pluralized_entity_name]
-						
+
+						if len(results) != 0:
+							self._log_error("Response", response_json)
+							self._save_json_data(json_content=response_json, entity=pluralized_entity_name, page="", offset="")	
 			self._save_entries(entity, results)
+		except Exception as e:
+			self._log_error(e)
+
+	def _save_json_data(self, *args, **kwargs):
+		try:
+			date_generated = datetime.now().date()
+			page = kwargs["page"]
+			entity = kwargs["entity"]
+			
+			offset = kwargs["offset"]
+			xero_id = kwargs["json_content"]["Id"]
+			content = kwargs["json_content"]
+			content_array = content[entity]
+			json_str = json.dumps(content_array, sort_keys=True)
+			sha256_hash = hashlib.sha256(json_str.encode()).hexdigest()
+			
+			if not frappe.db.exists(
+				{"doctype": "Migrator Data", "sha256_hash": sha256_hash}
+			):	
+				migrator_data = {
+					"doctype": "Migrator Data",
+					"xero_id": xero_id,
+					"content": content,
+					"company": self.company,
+					"sha256_hash": sha256_hash
+				}
+				
+				page = kwargs["page"]
+				offset = kwargs["offset"]
+				
+				title = f"{entity} - {date_generated}"
+				migrator_data["title"] = title
+
+				if page != "":
+					title_suffix = f" - page{page}"
+					title = f"{entity} - {date_generated}{title_suffix}"
+					migrator_data["page"] = page
+					migrator_data["title"] = title
+
+				if offset != "":
+					title_suffix = f" - offset{offset}"
+					title = f"{entity} - {date_generated}{title_suffix}"
+					migrator_data["offset"] = offset
+					migrator_data["title"] = title
+
+				frappe.get_doc(migrator_data).insert()
 		except Exception as e:
 			self._log_error(e)
 	
@@ -212,6 +282,7 @@ class XeroJournalsMigrator(Document):
 
 				if response.status_code == 200:
 					response_json = response.json()
+
 					if pluralized_entity_name in response_json:
 						results = response_json[pluralized_entity_name]
 						
@@ -220,6 +291,9 @@ class XeroJournalsMigrator(Document):
 							next_page = current_page + 1
 
 							pages.append(next_page)
+
+							self._log_error("Response", response_json)
+							self._save_json_data(json_content=response_json, entity=pluralized_entity_name, page=current_page, offset="")	
 			return entries
 		except Exception as e:
 			self._log_error(e)
@@ -242,6 +316,8 @@ class XeroJournalsMigrator(Document):
 			if response.status_code == 200:
 				response_json = response.json()
 
+				self._log_error("Response", response_json)
+				
 				if pluralized_entity_name in response_json and len(response_json[pluralized_entity_name]) != 0:
 					results = response_json[pluralized_entity_name]
 				
@@ -250,6 +326,8 @@ class XeroJournalsMigrator(Document):
 
 					last_offset_value = offset_values[-1]
 					last_offset_values.append(last_offset_value)
+					last_offset_value_string = f"{last_offset_value}"
+					self._save_json_data(json_content=response_json, entity=pluralized_entity_name, page="", offset=last_offset_value_string)
 
 				if offset_values:						
 					entries.extend(results)
@@ -270,10 +348,75 @@ class XeroJournalsMigrator(Document):
 									entries.extend(results)
 									next_page = current_page + 100
 
-									last_offset_values.append(next_page)	
+									last_offset_values.append(next_page)
+									last_offset_value_string = f"{next_page}"
+									self._save_json_data(json_content=response_json, entity=pluralized_entity_name, page="", offset=last_offset_value_string)
+
 			return entries
 		except Exception as e:
 			self._log_error(e)
+
+	def _pull_data(self, entity):
+		try:
+			scope_mapping = {
+				"Bank Transactions": "BankTransaction",
+				"Bank Transfers": "BankTransfer",
+				"Batch Payments": "BatchPayment",
+				"Contacts": "Contact",
+				"Contact Groups": "ContactGroup",
+				"Credit Notes": "CreditNote",
+				"Invoices": "Invoice",
+				"Items": "Item",
+				"Linked Transactions": "LinkedTransaction",
+				"Manual Journals": "ManualJournal",
+				"Overpayments": "Overpayment",
+				"Payments": "Payment",
+				"Prepayments": "Prepayment",
+				"Purchase Orders": "PurchaseOrder",
+			}
+
+			entities_for_pagination = {
+				"BankTransaction": True,
+				"BankTransfer": False,
+				"BatchPayment": False,
+				"Contact": True,
+				"ContactGroup": False,
+				"CreditNote": True,
+				"Invoice": True,
+				"Item": False,
+				"LinkedTransaction": True,
+				"ManualJournal": True,
+				"Overpayment": True,
+				"Payment": True,
+				"Prepayment": True,
+				"PurchaseOrder": True
+			}
+
+			scope = scope_mapping[entity]
+			pluralized_scope = f"{scope}s"
+			query_uri = "{}/{}".format(
+				self.api_endpoint,
+				pluralized_scope,
+			)
+
+			if entities_for_pagination[scope] == True:
+				results = self.query_with_pagination(scope)
+			else:				
+				response = self._get(query_uri)
+
+				#self._save_entries(entity, content)
+
+				if response.status_code == 200:
+					response_json = response.json()
+
+					if scope in response_json and response_json[scope]:
+						results = response_json[scope]
+
+						if len(results) != 0:
+							self._log_error("Response", response_json)
+							self._save_json_data(json_content=response_json, entity=pluralized_scope, page="", offset="")
+		except Exception as e:
+			self._log_error(e, entity)
 
 	def _get(self, *args, **kwargs):
 		try:
