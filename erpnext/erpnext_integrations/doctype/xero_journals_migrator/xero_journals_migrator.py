@@ -10,7 +10,6 @@ from frappe import _
 from frappe.model.document import Document
 from requests_oauthlib import OAuth2Session
 import re
-import pandas as pd
 import hashlib
 
 from datetime import datetime, timedelta
