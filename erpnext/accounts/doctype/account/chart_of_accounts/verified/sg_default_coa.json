@@ -252,7 +252,7 @@
                 "Other Income": {}, 
                 "Service Charges": {}
             }, 
-            "root_type": "Income"
+            "root_type": "Revenue"
         }, 
         "Liabilities": {
             "Capital Account": {

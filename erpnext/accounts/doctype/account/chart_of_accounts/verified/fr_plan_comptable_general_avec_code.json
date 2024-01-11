@@ -2742,7 +2742,7 @@
             "account_number": "6"
         },
         "Comptes de Produits": {
-            "root_type": "Income",
+            "root_type": "Revenue",
             "Ventes de produits fabriqu\u00e9s, prestations de services, marchandises": {
                 "Ventes de produits finis": {
                     "Produits finis (ou groupe) A": {

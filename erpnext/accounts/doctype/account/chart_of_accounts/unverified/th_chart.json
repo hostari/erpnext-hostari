@@ -38,7 +38,7 @@
         },
         "Income": {
             "Income": {},
-            "root_type": "Income"
+            "root_type": "Revenue"
         },
         "Liabilities": {
             "Account Payable": {},

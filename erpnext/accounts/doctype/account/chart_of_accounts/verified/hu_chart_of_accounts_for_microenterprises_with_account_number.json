@@ -1427,228 +1427,228 @@
     },
     "SZ\u00c1MLAOSZT\u00c1LY BEV\u00c9TELEK": {
       "account_number": 9,
-      "root_type": "Income",
+      "root_type": "Revenue",
       "is_group": 1,
       "BELF\u00d6LDI \u00c9RT\u00c9KES\u00cdT\u00c9S \u00c1RBEV\u00c9TELE": {
         "account_number": 91,
-        "root_type": "Income",
+        "root_type": "Revenue",
         "is_group": 1,
         "Belf\u00f6ldinek \u00e9rt\u00e9kes\u00edtett saj\u00e1t termel\u00e9s\u0171 k\u00e9szletek \u00e1rbev\u00e9tele": {
           "account_number": 911,
-          "root_type": "Income"
+          "root_type": "Revenue"
         },
         "Belf\u00f6ldinek \u00e9rt\u00e9kes\u00edtett v\u00e1s\u00e1rolt k\u00e9szletek \u00e1rbev\u00e9tele": {
           "account_number": 912,
-          "root_type": "Income"
+          "root_type": "Revenue"
         },
         "Belf\u00f6ldinek ny\u00fajtott szolg\u00e1ltat\u00e1sok \u00e1rbev\u00e9tele": {
           "account_number": 913,
-          "root_type": "Income"
+          "root_type": "Revenue"
         },
         "Belf\u00f6ldi \u00e9rt\u00e9kes\u00edt\u00e9ssel kapcsolatos \u00e1rt\u00e1mogat\u00e1s": {
           "account_number": 918,
-          "root_type": "Income"
+          "root_type": "Revenue"
         },
         "Egy\u00e9b belf\u00f6ldi \u00e9rt\u00e9kes\u00edt\u00e9s \u00e1rbev\u00e9tele": {
           "account_number": 919,
-          "root_type": "Income"
+          "root_type": "Revenue"
         }
       },
       "EXPORT\u00c9RT\u00c9KES\u00cdT\u00c9S \u00c1RBEV\u00c9TELE": {
         "account_number": 92,
-        "root_type": "Income",
+        "root_type": "Revenue",
         "is_group": 1,
         "K\u00fclf\u00f6ldinek \u00e9rt\u00e9kes\u00edtett saj\u00e1t termel\u00e9s\u0171 k\u00e9szletek \u00e1rbev\u00e9tele": {
           "account_number": 921,
-          "root_type": "Income"
+          "root_type": "Revenue"
         },
         "K\u00fclf\u00f6ldinek \u00e9rt\u00e9kes\u00edtett v\u00e1s\u00e1rolt k\u00e9szletek \u00e1rbev\u00e9tele": {
           "account_number": 922,
-          "root_type": "Income"
+          "root_type": "Revenue"
         },
         "K\u00fclf\u00f6ldinek ny\u00fajtott szolg\u00e1ltat\u00e1sok \u00e1rbev\u00e9tele": {
           "account_number": 923,
-          "root_type": "Income"
+          "root_type": "Revenue"
         },
         "K\u00fclf\u00f6ldi \u00e9rt\u00e9kes\u00edt\u00e9ssel kapcsolatos \u00e1rt\u00e1mogat\u00e1s": {
           "account_number": 928,
-          "root_type": "Income"
+          "root_type": "Revenue"
         },
         "Egy\u00e9b k\u00fclf\u00f6ldi \u00e9rt\u00e9kes\u00edt\u00e9s \u00e1rbev\u00e9tele": {
           "account_number": 929,
-          "root_type": "Income"
+          "root_type": "Revenue"
         }
       },
       "EGY\u00c9B BEV\u00c9TELEK": {
         "account_number": 96,
-        "root_type": "Income",
+        "root_type": "Revenue",
         "is_group": 1,
         "Egy\u00e9b bev\u00e9telnek min\u0151s\u00fcl\u0151 \u00e9rt\u00e9kes\u00edt\u00e9sek": {
           "account_number": 961,
-          "root_type": "Income",
+          "root_type": "Revenue",
           "is_group": 1,
           "\u00c9rt\u00e9kes\u00edtett immateri\u00e1lis javak, t\u00e1rgyi eszk\u00f6z\u00f6k ellen\u00e9rt\u00e9ke": {
             "account_number": 9611,
-            "root_type": "Income"
+            "root_type": "Revenue"
           },
           "\u00c9rt\u00e9kes\u00edtett, \u00e1truh\u00e1zott (engedm\u00e9nyezett) k\u00f6vetel\u00e9sek ellen\u00e9rt\u00e9ke": {
             "account_number": 9612,
-            "root_type": "Income"
+            "root_type": "Revenue"
           }
         },
         "K\u00f6vetel\u00e9s k\u00f6nyv szerinti \u00e9rt\u00e9k\u00e9t meghalad\u00f3an realiz\u00e1lt \u00f6sszeg": {
           "account_number": 963,
-          "root_type": "Income"
+          "root_type": "Revenue"
         },
         "C\u00e9ltartal\u00e9k felold\u00e1s": {
           "account_number": 964,
-          "root_type": "Income"
+          "root_type": "Revenue"
         },
         "Ut\u00f3lag kapott, nem sz\u00e1ml\u00e1zott engedm\u00e9ny": {
           "account_number": 965,
-          "root_type": "Income"
+          "root_type": "Revenue"
         },
         "M\u0171k\u00f6d\u00e9si c\u00e9lra kapott t\u00e1mogat\u00e1s, juttat\u00e1s": {
           "account_number": 966,
-          "root_type": "Income",
+          "root_type": "Revenue",
           "is_group": 1,
           "K\u00f6zponti k\u00f6lts\u00e9gvet\u00e9sb\u0151l kapott t\u00e1mogat\u00e1s, juttat\u00e1s": {
             "account_number": 9661,
-            "root_type": "Income"
+            "root_type": "Revenue"
           },
           "Helyi \u00f6nkorm\u00e1nyzatokt\u00f3l kapott t\u00e1mogat\u00e1s, juttat\u00e1s": {
             "account_number": 9662,
-            "root_type": "Income"
+            "root_type": "Revenue"
           },
           "Eur\u00f3pai Uni\u00f3t\u00f3l kapott t\u00e1mogat\u00e1s, juttat\u00e1s": {
             "account_number": 9663,
-            "root_type": "Income"
+            "root_type": "Revenue"
           },
           "Egy\u00e9b forr\u00e1sb\u00f3l kapott t\u00e1mogat\u00e1s, juttat\u00e1s": {
             "account_number": 9664,
-            "root_type": "Income"
+            "root_type": "Revenue"
           }
         },
         "Egy\u00e9b bev\u00e9telk\u00e9nt elsz\u00e1molt p\u00e9nzbev\u00e9telek": {
           "account_number": 967,
-          "root_type": "Income",
+          "root_type": "Revenue",
           "is_group": 1,
           "K\u00e1resem\u00e9nnyel kapcsolatos t\u00e9r\u00edt\u00e9sek": {
             "account_number": 9671,
-            "root_type": "Income"
+            "root_type": "Revenue"
           },
           "K\u00f6lts\u00e9gek (r\u00e1ford\u00edt\u00e1sok) ellent\u00e9telez\u00e9s\u00e9re kapott t\u00e1mogat\u00e1s, juttat\u00e1s": {
             "account_number": 9672,
-            "root_type": "Income"
+            "root_type": "Revenue"
           },
           "Fejleszt\u00e9si c\u00e9lra kapott t\u00e1mogat\u00e1s, juttat\u00e1s": {
             "account_number": 9673,
-            "root_type": "Income"
+            "root_type": "Revenue"
           },
           "Kapott b\u00edrs\u00e1gok, k\u00f6tb\u00e9rek, fekb\u00e9rek, k\u00e9sedelmi kamatok, k\u00e1rt\u00e9r\u00edt\u00e9sek": {
             "account_number": 9674,
-            "root_type": "Income"
+            "root_type": "Revenue"
           }
         },
         "Terven fel\u00fcli \u00e9rt\u00e9kcs\u00f6kken\u00e9sek, \u00e9rt\u00e9kveszt\u00e9sek vissza\u00edr\u00e1sa": {
           "account_number": 968,
-          "root_type": "Income",
+          "root_type": "Revenue",
           "is_group": 1,
           "Immateri\u00e1lis javak terven fel\u00fcli \u00e9rt\u00e9kcs\u00f6kken\u00e9s\u00e9nek vissza\u00edr\u00e1sa": {
             "account_number": 9681,
-            "root_type": "Income"
+            "root_type": "Revenue"
           },
           "T\u00e1rgyi eszk\u00f6z\u00f6k terven fel\u00fcli \u00e9rt\u00e9kcs\u00f6kken\u00e9s\u00e9nek vissza\u00edr\u00e1sa": {
             "account_number": 9682,
-            "root_type": "Income"
+            "root_type": "Revenue"
           },
           "K\u00e9szletek \u00e9rt\u00e9kveszt\u00e9s\u00e9nek vissza\u00edr\u00e1sa": {
             "account_number": 9683,
-            "root_type": "Income"
+            "root_type": "Revenue"
           },
           "R\u00e9szesed\u00e9sek \u00e9rt\u00e9kveszt\u00e9s\u00e9nek vissza\u00edr\u00e1sa": {
             "account_number": 9684,
-            "root_type": "Income"
+            "root_type": "Revenue"
           }
         },
         "K\u00fcl\u00f6nf\u00e9le egy\u00e9b bev\u00e9telek": {
           "account_number": 969,
-          "root_type": "Income",
+          "root_type": "Revenue",
           "is_group": 1,
           "Gazd. t\u00e1rs. bevitt, \u00e9rt\u00e9kp. v. r\u00e9sz. nem min\u0151s\u00fcl\u0151 vagyont. nyilv. sz. \u00e9rt. \u00e9s l\u00e9tes\u00edt\u0151 o. meghat. \u00e9rt. nyeres\u00e9gjelleg\u0171 k\u00fcl.": {
             "account_number": 9691,
-            "root_type": "Income"
+            "root_type": "Revenue"
           },
           "El\u00e9v\u00fclt k\u00f6telezetts\u00e9g k\u00f6nyv szerinti \u00e9rt\u00e9ke": {
             "account_number": 9692,
-            "root_type": "Income"
+            "root_type": "Revenue"
           },
           "T\u00e9r\u00edt\u00e9s n\u00e9lk\u00fcl \u00e1tvett, aj\u00e1nd\u00e9kk\u00e9nt, hagyat\u00e9kk\u00e9nt kapott, fellelt eszk\u00f6z\u00f6k piaci vagy jogszab\u00e1ly szerinti \u00e9rt\u00e9ke": {
             "account_number": 9693,
-            "root_type": "Income"
+            "root_type": "Revenue"
           },
           "T\u00e9r\u00edt\u00e9s n\u00e9lk\u00fcl kapott szolg\u00e1ltat\u00e1sok piaci vagy jogszab\u00e1ly szerinti \u00e9rt\u00e9ke": {
             "account_number": 9694,
-            "root_type": "Income"
+            "root_type": "Revenue"
           },
           "Elengedett \u00e9s ellent\u00e9telez\u00e9s n\u00e9lk\u00fcl \u00e1tv\u00e1llalt k\u00f6telezetts\u00e9g \u00e9rt\u00e9ke": {
             "account_number": 9695,
-            "root_type": "Income"
+            "root_type": "Revenue"
           },
           "Egy\u00e9b, vagyonn\u00f6veked\u00e9ssel j\u00e1r\u00f3 bev\u00e9telek": {
             "account_number": 9696,
-            "root_type": "Income"
+            "root_type": "Revenue"
           }
         }
       },
       "P\u00c9NZ\u00dcGYI M\u0170VELETEK BEV\u00c9TELEI": {
         "account_number": 97,
-        "root_type": "Income",
+        "root_type": "Revenue",
         "is_group": 1,
         "R\u00e9szesed\u00e9sekb\u0151l sz\u00e1rmaz\u00f3 bev\u00e9telek, \u00e1rfolyamnyeres\u00e9gek": {
           "account_number": 971,
-          "root_type": "Income"
+          "root_type": "Revenue"
         },
         "Befektetett p\u00e9nz\u00fcgyi eszk\u00f6z\u00f6kb\u0151l (\u00e9rt\u00e9kpap\u00edrokb\u00f3l, k\u00f6lcs\u00f6n\u00f6kb\u0151l) sz\u00e1rmaz\u00f3 bev\u00e9telek, \u00e1rfolyamnyeres\u00e9gek": {
           "account_number": 972,
-          "root_type": "Income"
+          "root_type": "Revenue"
         },
         "Hitelint\u00e9zett\u0151l kapott kamatok \u00e9s kamatjelleg\u0171 bev\u00e9telek": {
           "account_number": 973,
-          "root_type": "Income"
+          "root_type": "Revenue"
         },
         "Nem hitelint\u00e9zett\u0151l kapott kamatok \u00e9s kamatjelleg\u0171 bev\u00e9telek": {
           "account_number": 974,
-          "root_type": "Income"
+          "root_type": "Revenue"
         },
         "Kapott (j\u00e1r\u00f3) osztal\u00e9k \u00e9s r\u00e9szesed\u00e9s": {
           "account_number": 975,
-          "root_type": "Income"
+          "root_type": "Revenue"
         },
         "K\u00fclf\u00f6ldi p\u00e9nz\u00e9rt\u00e9kre sz\u00f3l\u00f3 eszk\u00f6z\u00f6k \u00e9s k\u00f6telezetts\u00e9gek \u00e1rfolyamnyeres\u00e9gei": {
           "account_number": 976,
-          "root_type": "Income",
+          "root_type": "Revenue",
           "is_group": 1,
           "Deviza \u00e9s valutak\u00e9szletek forintra \u00e1tv\u00e1lt\u00e1s\u00e1nak \u00e1rfolyamnyeres\u00e9ge": {
             "account_number": 9761,
-            "root_type": "Income"
+            "root_type": "Revenue"
           },
           "K\u00fclf\u00f6ldi p\u00e9nz\u00e9rt\u00e9kre sz\u00f3l\u00f3 eszk\u00f6z\u00f6k \u00e9s k\u00f6telezetts\u00e9gek p\u00e9nz\u00fcgyileg rendezett \u00e1rfolyamnyeres\u00e9ge": {
             "account_number": 9762,
-            "root_type": "Income"
+            "root_type": "Revenue"
           }
         },
         "P\u00e9nz\u00fcgyi m\u0171veletek egy\u00e9b bev\u00e9telei": {
           "account_number": 977,
-          "root_type": "Income"
+          "root_type": "Revenue"
         },
         "P\u00e9nz\u00fcgyi rendez\u00e9shez kapcsol\u00f3d\u00f3an kapott engedm\u00e9ny": {
           "account_number": 978,
-          "root_type": "Income"
+          "root_type": "Revenue"
         },
         "Egy\u00e9b vagyonn\u00f6veked\u00e9ssel j\u00e1r\u00f3 p\u00e9nz\u00fcgyi bev\u00e9telek": {
           "account_number": 979,
-          "root_type": "Income"
+          "root_type": "Revenue"
         }
       }
     }

@@ -453,7 +453,7 @@
                     }
                 }
             },
-            "root_type": "Income"
+            "root_type": "Revenue"
         },
         "Share Holder Equity": {
             "Capital": {

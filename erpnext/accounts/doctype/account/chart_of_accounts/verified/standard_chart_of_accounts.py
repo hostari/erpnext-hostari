@@ -78,7 +78,7 @@ def get():
 		_("Income"): {
 			_("Direct Income"): {_("Sales"): {}, _("Service"): {}},
 			_("Indirect Income"): {"is_group": 1},
-			"root_type": "Income",
+			"root_type": "Revenue",
 		},
 		_("Source of Funds (Liabilities)"): {
 			_("Current Liabilities"): {

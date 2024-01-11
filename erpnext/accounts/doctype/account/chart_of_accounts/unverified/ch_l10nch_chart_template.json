@@ -1784,7 +1784,7 @@
                     "Ventes brutes prestations services \u00e0 st\u00e9s groupe": {}
                 }
             },
-			"root_type": "Income"
+			"root_type": "Revenue"
         },
         "Cl\u00f4ture": {
             "Bilan": {

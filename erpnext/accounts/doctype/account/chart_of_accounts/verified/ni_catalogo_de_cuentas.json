@@ -315,7 +315,7 @@
                 "Venta de Bienes o Prestacion de Servicios Grabados": {}, 
                 "Venta por Exportaciones": {}
             }, 
-            "root_type": "Income"
+            "root_type": "Revenue"
         }, 
         "Pasivo": {
             "Obligaciones por Arrendamiento Financiero a Largo Plazo": {

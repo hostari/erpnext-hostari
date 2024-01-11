@@ -689,7 +689,7 @@
             "Verkopen handel overig": {}, 
             "Verleende Kredietbep. fabricage": {}, 
             "Verleende Kredietbep. handel": {}, 
-            "root_type": "Income"
+            "root_type": "Revenue"
         }
     }
 }

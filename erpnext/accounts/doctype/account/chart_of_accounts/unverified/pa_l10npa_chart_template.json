@@ -225,7 +225,7 @@
                     "Ventas - Categoria de productos 01": {}
                 }
             },
-			"root_type": "Income"
+			"root_type": "Revenue"
         }
     }
 }
