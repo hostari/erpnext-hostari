@@ -4003,7 +4003,7 @@
     "Ingresos": {
       "account_number": "4",
       "account_type": "Income Account",
-      "root_type": "Income",
+      "root_type": "Revenue",
       "Operacionales": {
         "account_number": "41",
         "account_type": "Income Account",

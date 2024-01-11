@@ -215,7 +215,7 @@
                 "0-Ajustes": {},
                 "0-Donaciones": {}
             },
-            "root_type": "Income"
+            "root_type": "Revenue"
         },
         "0-Pasivo": {
             "0-Pasivo circulante": {

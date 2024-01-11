@@ -829,7 +829,7 @@
 				"978. P\u00e9nz\u00fcgyi rendez\u00e9shez kapcsol\u00f3d\u00f3an kapott engedm\u00e9ny": {}, 
 				"979. Egy\u00e9b vagyonn\u00f6veked\u00e9ssel j\u00e1r\u00f3 p\u00e9nz\u00fcgyi bev\u00e9telek": {}
 			}, 
-			"root_type": "Income"
+			"root_type": "Revenue"
 		}
 	}
 }

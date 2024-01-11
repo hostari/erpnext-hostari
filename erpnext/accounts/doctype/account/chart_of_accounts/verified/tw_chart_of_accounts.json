@@ -154,7 +154,7 @@
         }, 
         "\u71df\u696d\u5916\u6536\u5165\u53ca\u8cbb\u7528": {
             "account_number": "7", 
-            "root_type": "Income", 
+            "root_type": "Revenue", 
             "\u71df\u696d\u5916\u6536\u5165": {
                 "account_number": "71~74", 
                 "\u514c\u63db\u5229\u76ca": {
@@ -430,7 +430,7 @@
         }, 
         "\u71df\u696d\u6536\u5165": {
             "account_number": "4", 
-            "root_type": "Income", 
+            "root_type": "Revenue", 
             "\u5176\u4ed6\u71df\u696d\u6536\u5165": {
                 "account_number": "48", 
                 "\u5176\u4ed6\u71df\u696d\u6536\u5165\u2014\u5176\u4ed6": {

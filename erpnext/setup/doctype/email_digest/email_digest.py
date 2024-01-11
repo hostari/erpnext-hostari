@@ -399,7 +399,7 @@ class EmailDigest(Document):
 		income_account = frappe.db.get_all(
 			"Account",
 			fields=["name"],
-			filters={"root_type": "Income", "parent_account": "", "company": self.company},
+			filters={"root_type": "Revenue", "parent_account": "", "company": self.company},
 		)
 
 		label = get_link_to_report(
