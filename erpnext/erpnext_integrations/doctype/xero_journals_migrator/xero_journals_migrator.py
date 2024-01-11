@@ -1,20 +1,26 @@
 # Copyright (c) 2024, Frappe Technologies Pvt. Ltd. and contributors
 # For license information, please see license.txt
 
+import hashlib
 import json
+import re
 import traceback
+from datetime import datetime, timedelta
 
 import frappe
 import requests
 from frappe import _
 from frappe.model.document import Document
 from requests_oauthlib import OAuth2Session
-import re
-import hashlib
 
-from datetime import datetime, timedelta
 from erpnext import encode_company_abbr
 
+
+# Xero requires a redirect URL, User will be redirect to this URL
+# This will be a GET request
+# Request parameters will have two parameters `code` and `tenantId`
+# `code` is required to acquire refresh_token and access_token
+# `tenantId` is the Xero Company ID. It is Needed to actually fetch data.
 @frappe.whitelist()
 def callback(*args, **kwargs):
 	migrator = frappe.get_doc("Xero Journals Migrator")
@@ -29,6 +35,7 @@ def callback(*args, **kwargs):
 	# We need this page to automatically close afterwards
 	frappe.respond_as_web_page("Xero Authentication", html="<script>window.close()</script>")
 
+
 class XeroJournalsMigrator(Document):
 	def __init__(self, *args, **kwargs):
 		super(XeroJournalsMigrator, self).__init__(*args, **kwargs)
@@ -38,7 +45,7 @@ class XeroJournalsMigrator(Document):
 		if not self.authorization_url and self.authorization_endpoint:
 			self.authorization_url = self.oauth.authorization_url(self.authorization_endpoint)[0]
 	
-	def on_update(self):
+	def on_update(self):	
 		if self.company:
 			# We need a Cost Center corresponding to the selected erpnext Company
 			self.default_cost_center = frappe.db.get_value("Company", self.company, "cost_center")
@@ -52,17 +59,17 @@ class XeroJournalsMigrator(Document):
 
 
 	@frappe.whitelist()
-	def migrate(self):	
+	def migrate(self):
 		# self._migrate()
 		frappe.enqueue_doc("Xero Journals Migrator", "Xero Journals Migrator", "_migrate", queue="long")
 
 	def _migrate(self):
 		try:
-			self.set_indicator("In Progress") # done
+			self.set_indicator("In Progress")  # done
 			# Add xero_id field to every document so that we can lookup by Id reference
 			# provided by documents in API responses.
 			# Also add a company field to Customer Supplier and Item
-			self._make_custom_fields() # done
+			self._make_custom_fields()  # done
 
 			self._migrate_accounts()
 
@@ -86,7 +93,7 @@ class XeroJournalsMigrator(Document):
 				"Overpayments",
 				"Payments",
 				"Prepayments",
-				"Purchase Orders"
+				"Purchase Orders",
 			]
 
 			for entity in entities_for_download:
@@ -160,7 +167,7 @@ class XeroJournalsMigrator(Document):
 							"doctype": "Account",
 							"account_name": "{} - Xero".format(root),
 							"root_type": root,
-							"is_group": "1", # root accounts are group accounts
+							"is_group": "1",  # root accounts are group accounts
 							"company": self.company,
 						}
 					).insert(ignore_mandatory=True)
@@ -174,11 +181,9 @@ class XeroJournalsMigrator(Document):
 			query_uri = "{}/{}".format(
 				self.api_endpoint,
 				pluralized_entity_name,
-			)
-			
+			)	
 			# Count number of entries
 			# fetch pages and accumulate
-				
 			entities_for_pagination = {
 				"Account": False,
 				"TaxRate": False,
@@ -194,16 +199,13 @@ class XeroJournalsMigrator(Document):
 			offsetter = {
 				"Journal": "JournalNumber",
 			}
-			
 			if entities_for_pagination[entity] == True and entities_for_offset[entity] == False:
 				results = self.query_with_pagination(entity)
 			elif entities_for_pagination[entity] == False and entities_for_offset[entity] == True:
 				results = self._query_with_offset(entity, offsetter[entity])
 			else:				
 				response = self._get(query_uri)
-
 				#self._save_entries(entity, content)
-
 				if response.status_code == 200:
 					response_json = response.json()
 
@@ -211,7 +213,9 @@ class XeroJournalsMigrator(Document):
 						results = response_json[pluralized_entity_name]
 
 						if len(results) != 0:
-							self._save_json_data(json_content=response_json, entity=pluralized_entity_name, page="", offset="")	
+							self._save_json_data(
+								json_content=response_json, entity=pluralized_entity_name, page="", offset=""
+							)	
 			self._save_entries(entity, results)
 		except Exception as e:
 			self._log_error(e)
@@ -229,15 +233,13 @@ class XeroJournalsMigrator(Document):
 			json_str = json.dumps(content_array, sort_keys=True)
 			sha256_hash = hashlib.sha256(json_str.encode()).hexdigest()
 			
-			if not frappe.db.exists(
-				{"doctype": "Migrator Data", "sha256_hash": sha256_hash}
-			):	
+			if not frappe.db.exists({"doctype": "Migrator Data", "sha256_hash": sha256_hash}):
 				migrator_data = {
 					"doctype": "Migrator Data",
 					"xero_id": xero_id,
 					"content": content,
 					"company": self.company,
-					"sha256_hash": sha256_hash
+					"sha256_hash": sha256_hash,
 				}
 				
 				page = kwargs["page"]
@@ -270,7 +272,7 @@ class XeroJournalsMigrator(Document):
 		)
 
 		entries = []
-		pages = [1] 
+		pages = [1]
 
 		try:
 			while pages:
@@ -283,14 +285,15 @@ class XeroJournalsMigrator(Document):
 
 					if pluralized_entity_name in response_json:
 						results = response_json[pluralized_entity_name]
-						
 						if len(results) != 0:
 							entries.extend(results)
 							next_page = current_page + 1
 
 							pages.append(next_page)
 
-							self._save_json_data(json_content=response_json, entity=pluralized_entity_name, page=current_page, offset="")	
+							self._save_json_data(
+								json_content=response_json, entity=pluralized_entity_name, page=current_page, offset=""
+							)	
 			return entries
 		except Exception as e:
 			self._log_error(e)
@@ -312,18 +315,20 @@ class XeroJournalsMigrator(Document):
 
 			if response.status_code == 200:
 				response_json = response.json()
-				
 				if pluralized_entity_name in response_json and len(response_json[pluralized_entity_name]) != 0:
-					results = response_json[pluralized_entity_name]
-				
+					results = response_json[pluralized_entity_name]	
 					for result in results:
 						offset_values.append(result[offsetter])
 
 					last_offset_value = offset_values[-1]
 					last_offset_values.append(last_offset_value)
 					last_offset_value_string = f"{last_offset_value}"
-					self._save_json_data(json_content=response_json, entity=pluralized_entity_name, page="", offset=last_offset_value_string)
-
+					self._save_json_data(
+						json_content=response_json, 
+						entity=pluralized_entity_name, 
+						page="", 
+						offset=last_offset_value_string)
+					
 				if offset_values:						
 					entries.extend(results)
 								
@@ -345,7 +350,12 @@ class XeroJournalsMigrator(Document):
 
 									last_offset_values.append(next_page)
 									last_offset_value_string = f"{next_page}"
-									self._save_json_data(json_content=response_json, entity=pluralized_entity_name, page="", offset=last_offset_value_string)
+									self._save_json_data(
+										json_content=response_json, 
+										entity=pluralized_entity_name, 
+										page="", 
+										offset=last_offset_value_string
+									)
 
 			return entries
 		except Exception as e:
@@ -384,7 +394,7 @@ class XeroJournalsMigrator(Document):
 				"Overpayment": True,
 				"Payment": True,
 				"Prepayment": True,
-				"PurchaseOrder": True
+				"PurchaseOrder": True,
 			}
 
 			scope = scope_mapping[entity]
@@ -396,10 +406,10 @@ class XeroJournalsMigrator(Document):
 
 			if entities_for_pagination[scope] == True:
 				results = self.query_with_pagination(scope)
-			else:				
+			else:
 				response = self._get(query_uri)
 
-				#self._save_entries(entity, content)
+				# self._save_entries(entity, content)
 
 				if response.status_code == 200:
 					response_json = response.json()
@@ -408,7 +418,9 @@ class XeroJournalsMigrator(Document):
 						results = response_json[scope]
 
 						if len(results) != 0:
-							self._save_json_data(json_content=response_json, entity=pluralized_scope, page="", offset="")
+							self._save_json_data(
+								json_content=response_json, entity=pluralized_scope, page="", offset=""
+							)
 		except Exception as e:
 			self._log_error(e, entity)
 
@@ -417,7 +429,7 @@ class XeroJournalsMigrator(Document):
 			kwargs["headers"] = {
 				"Accept": "application/json",
 				"Authorization": "Bearer {}".format(self.access_token),
-				"Xero-tenant-id": self.xero_tenant_id
+				"Xero-tenant-id": self.xero_tenant_id,
 			}
 
 			response = requests.get(*args, **kwargs)	
@@ -518,7 +530,7 @@ class XeroJournalsMigrator(Document):
 			"EQUITY": "Equity",
 			"EXPENSE": "Expense",
 			"LIABILITY": "Liability",
-			"REVENUE": "Revenue"
+			"INCOME": "Revenue"
 		}
 		
 		try:
