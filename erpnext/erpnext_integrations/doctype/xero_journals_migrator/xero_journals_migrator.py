@@ -60,8 +60,8 @@ class XeroJournalsMigrator(Document):
 
 	@frappe.whitelist()
 	def migrate(self):
-		self._migrate()
-		#frappe.enqueue_doc("Xero Journals Migrator", "Xero Journals Migrator", "_migrate", queue="long")
+		#self._migrate()
+		frappe.enqueue_doc("Xero Journals Migrator", "Xero Journals Migrator", "_migrate", queue="long")
 
 	def _migrate(self):
 		try:
