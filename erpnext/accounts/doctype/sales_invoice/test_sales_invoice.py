@@ -3363,7 +3363,7 @@ class TestSalesInvoice(FrappeTestCase):
 		batch_no = get_batch_from_bundle(si.items[0].serial_and_batch_bundle)
 		self.assertTrue(batch_no)
 
-		frappe.db.set_value("Batch", batch_no, "expiry_date", add_days(today(), -1))
+		frappe.db.set_value("Batch", self.test_sales_invoice_with_payable_tax_account, "expiry_date", add_days(today(), -1))
 
 		return_si = make_return_doc(si.doctype, si.name)
 		return_si.save().submit()

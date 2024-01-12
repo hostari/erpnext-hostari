@@ -81,7 +81,7 @@
    "fieldtype": "Select",
    "in_standard_filter": 1,
    "label": "Root Type",
-   "options": "\nAsset\nLiability\nRevenue\nExpense\nEquity",
+   "options": "\nAsset\nLiability\nIncome\nExpense\nEquity",
    "read_only": 1
   },
   {
@@ -193,7 +193,7 @@
  "idx": 1,
  "is_tree": 1,
  "links": [],
- "modified": "2024-01-10 04:57:33.681676",
+ "modified": "2024-01-12 02:38:34.542795",
  "modified_by": "Administrator",
  "module": "Accounts",
  "name": "Account",

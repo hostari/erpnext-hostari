@@ -27,7 +27,7 @@ def execute():
 		except frappe.DuplicateEntryError:
 			continue
 
-	rebuild_tree("Location")
+	rebuild_tree("Location", "parent_location")
 
 
 def get_parent_warehouse_name(warehouse):

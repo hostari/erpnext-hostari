@@ -109,7 +109,7 @@ def get():
 				"account_number": "4100",
 			},
 			_("Indirect Income"): {"is_group": 1, "account_number": "4200"},
-			"root_type": "Revenue",
+			"root_type": "Income",
 			"account_number": "4000",
 		},
 		_("Source of Funds (Liabilities)"): {

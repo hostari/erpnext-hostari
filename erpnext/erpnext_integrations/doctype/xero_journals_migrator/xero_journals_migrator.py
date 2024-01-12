@@ -60,8 +60,8 @@ class XeroJournalsMigrator(Document):
 
 	@frappe.whitelist()
 	def migrate(self):
-		# self._migrate()
-		frappe.enqueue_doc("Xero Journals Migrator", "Xero Journals Migrator", "_migrate", queue="long")
+		self._migrate()
+		#frappe.enqueue_doc("Xero Journals Migrator", "Xero Journals Migrator", "_migrate", queue="long")
 
 	def _migrate(self):
 		try:
@@ -152,7 +152,7 @@ class XeroJournalsMigrator(Document):
 
 	def _make_root_accounts(self):
 		# classify accounts for easier reporting
-		roots = ["Asset", "Equity", "Expense", "Liability", "Revenue"]
+		roots = ["Asset", "Equity", "Expense", "Liability", "Income"]
 		for root in roots:
 			try:
 				if not frappe.db.exists(
@@ -235,7 +235,7 @@ class XeroJournalsMigrator(Document):
 			json_str = json.dumps(content_array, sort_keys=True)
 			sha256_hash = hashlib.sha256(json_str.encode()).hexdigest()
 			
-			if not frappe.db.exists({"doctype": "Migrator Data", "sha256_hash": sha256_hash}):
+			if not frappe.db.exists({"doctype": "Migrator Data", "sha256_hash": sha256_hash, "company": self.company}):
 				migrator_data = {
 					"doctype": "Migrator Data",
 					"xero_id": xero_id,
@@ -532,7 +532,7 @@ class XeroJournalsMigrator(Document):
 			"EQUITY": "Equity",
 			"EXPENSE": "Expense",
 			"LIABILITY": "Liability",
-			"INCOME": "Revenue"
+			"REVENUE": "Income"
 		}
 		
 		try:
@@ -727,7 +727,7 @@ class XeroJournalsMigrator(Document):
 			"OTHERINCOME": "Other Income",
 			"OVERHEADS": "Overhead",
 			"PREPAYMENT": "Prepayment",
-			"REVENUE": "Revenue",
+			"REVENUE": "Income Account",
 			"SALES": "Sales",
 			"TERMLIAB": "Non-current Liability",
 			"NONCURRENT": "Non-current Asset"
