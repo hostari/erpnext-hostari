@@ -201,8 +201,10 @@ class XeroJournalsMigrator(Document):
 			}
 			if entities_for_pagination[entity] == True and entities_for_offset[entity] == False:
 				results = self.query_with_pagination(entity)
+				self._save_entries(entity, results)
 			elif entities_for_pagination[entity] == False and entities_for_offset[entity] == True:
 				results = self._query_with_offset(entity, offsetter[entity])
+				self._save_entries(entity, results)
 			else:				
 				response = self._get(query_uri)
 				#self._save_entries(entity, content)
@@ -216,7 +218,7 @@ class XeroJournalsMigrator(Document):
 							self._save_json_data(
 								json_content=response_json, entity=pluralized_entity_name, page="", offset=""
 							)	
-			self._save_entries(entity, results)
+							self._save_entries(entity, results)
 		except Exception as e:
 			self._log_error(e)
 
