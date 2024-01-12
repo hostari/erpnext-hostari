@@ -263,7 +263,7 @@
 		},
 		"Erlöse u. Erträge 2/8": {
 			"is_group": 1,
-			"root_type": "Income",
+			"root_type": "Revenue",
 			"Erlöskonten 8": {
 				"is_group": 1,
 				"Erlöse": {

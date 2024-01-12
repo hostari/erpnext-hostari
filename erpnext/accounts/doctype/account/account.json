@@ -124,7 +124,7 @@
    "label": "Account Type",
    "oldfieldname": "account_type",
    "oldfieldtype": "Select",
-   "options": "\nAccumulated Depreciation\nAsset Received But Not Billed\nBank\nCash\nChargeable\nCapital Work in Progress\nCost of Goods Sold\nCurrent Asset\nCurrent Liability\nDepreciation\nDirect Expense\nDirect Income\nEquity\nExpense Account\nExpenses Included In Asset Valuation\nExpenses Included In Valuation\nFixed Asset\nIncome Account\nIndirect Expense\nIndirect Income\nLiability\nPayable\nReceivable\nRound Off\nStock\nStock Adjustment\nStock Received But Not Billed\nService Received But Not Billed\nTax\nTemporary"
+   "options": "\nAccumulated Depreciation\nAsset Received But Not Billed\nBank\nCash\nChargeable\nCapital Work in Progress\nCost of Goods Sold\nCurrent Asset\nCurrent Liability\nDepreciation\nDirect Expense\nDirect Costs\nDirect Income\nEquity\nExpense\nExpense Account\nExpenses Included In Asset Valuation\nExpenses Included In Valuation\nFixed Asset\nIncome Account\nIndirect Expense\nIndirect Income\nInventory\nLiability\nOther Income\nOverheads\nPayable\nReceivable\nRevenue\nRound Off\nSales\nStock\nStock Adjustment\nStock Received But Not Billed\nService Received But Not Billed\nTax\nTemporary\nNon-current Asset\nNon-current Liability\nPrepayment\nInterest Income"
   },
   {
    "description": "Rate at which this tax is applied",
@@ -193,7 +193,7 @@
  "idx": 1,
  "is_tree": 1,
  "links": [],
- "modified": "2024-01-10 04:57:33.681676",
+ "modified": "2024-01-12 02:38:34.542795",
  "modified_by": "Administrator",
  "module": "Accounts",
  "name": "Account",

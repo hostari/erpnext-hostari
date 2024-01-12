@@ -792,7 +792,7 @@
                 "account_type": "Income Account"
             },
             "account_number": "50000000",
-            "root_type": "Income"
+            "root_type": "Revenue"
         },
         "60000000 - CUENTA LIQUIDADORA DE RESULTADOS - xmC": {
             "CUENTA DE CIERRE": {
@@ -803,7 +803,7 @@
                 "account_number": "61000000"
             },
             "account_number": "60000000",
-            "root_type": "Income"
+            "root_type": "Revenue"
         }
     }
 }

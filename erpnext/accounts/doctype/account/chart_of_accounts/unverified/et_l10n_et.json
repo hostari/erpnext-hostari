@@ -176,9 +176,9 @@
             "Share capital / equity": {},
             "root_type": "Equity"
         },
-        "REVENUE": {
+        "INCOME": {
             "Sales of Goods and Services": {},
-            "root_type": "Income"
+            "root_type": "Revenue"
         }
     }
 }

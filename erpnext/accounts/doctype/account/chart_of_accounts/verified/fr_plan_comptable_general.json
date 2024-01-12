@@ -1604,7 +1604,7 @@
                 "796-Transferts de charges financi\u00e8res": {},
                 "797-Transferts de charges exceptionnelles": {}
             },
-            "root_type": "Income"
+            "root_type": "Revenue"
         }
     }
 }

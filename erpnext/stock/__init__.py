@@ -59,7 +59,7 @@ def get_warehouse_account(warehouse, warehouse_account=None):
 			else:
 				from frappe.utils.nestedset import rebuild_tree
 
-				rebuild_tree("Warehouse")
+				rebuild_tree("Warehouse", "parent_warehouse")
 		else:
 			account = frappe.db.sql(
 				"""

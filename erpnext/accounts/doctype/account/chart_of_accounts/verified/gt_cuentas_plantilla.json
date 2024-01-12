@@ -371,7 +371,7 @@
             "Productos": {}, 
             "Servicios": {}, 
             "account_number": "4", 
-            "root_type": "Income"
+            "root_type": "Revenue"
         }, 
         "Otros Gastos y Productos Financieros": {
             "Otros Gastos": {

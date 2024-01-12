@@ -79,7 +79,7 @@ class TestItem(unittest.TestCase):
 		group_b.save()
 
 	def test_rebuild_tree(self):
-		rebuild_tree("Item Group")
+		rebuild_tree("Item Group", "parent_item_group")
 		self.test_basic_tree()
 
 	def move_it_back(self):

@@ -118,7 +118,7 @@
                     "Ventas": {}
                 }
             },
-			"root_type": "Income"
+			"root_type": "Revenue"
         },
         "Otros Gastos y Productos Financieros": {
             "Otros Gastos y Productos Financieros": {

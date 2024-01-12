@@ -194,7 +194,7 @@
             }
         },
         "xIngresos": {
-            "root_type": "Income",
+            "root_type": "Revenue",
             "xIngresos financieros": {
                 "xIntereses ganados sobre cuentas corrientes": {}
             },

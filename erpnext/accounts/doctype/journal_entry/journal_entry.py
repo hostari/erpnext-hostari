@@ -119,7 +119,7 @@ class JournalEntry(AccountsController):
 
 		self.clearance_date = None
 
-		self.validate_party()
+		# self.validate_party()
 		self.validate_entries_for_advance()
 		self.validate_multi_currency()
 		self.set_amounts_in_company_currency()

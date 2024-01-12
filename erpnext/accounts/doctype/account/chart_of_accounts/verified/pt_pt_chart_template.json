@@ -1888,7 +1888,7 @@
             }
         },
         "7 - Rendimentos": {
-            "root_type": "Income",
+            "root_type": "Revenue",
             "Vendas": {
                 "account_number": "71",
                 "account_name": "Vendas",
