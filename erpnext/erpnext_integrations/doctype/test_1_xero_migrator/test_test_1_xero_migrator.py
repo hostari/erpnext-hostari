@@ -7,4 +7,3 @@ from frappe.tests.utils import FrappeTestCase
 
 class TestTest1XeroMigrator(FrappeTestCase):
 	pass
-

@@ -45,7 +45,7 @@ class XeroJournalsMigrator(Document):
 		if not self.authorization_url and self.authorization_endpoint:
 			self.authorization_url = self.oauth.authorization_url(self.authorization_endpoint)[0]
 	
-	def on_update(self):	
+	def on_update(self):
 		if self.company:
 			# We need a Cost Center corresponding to the selected erpnext Company
 			self.default_cost_center = frappe.db.get_value("Company", self.company, "cost_center")
@@ -60,7 +60,7 @@ class XeroJournalsMigrator(Document):
 
 	@frappe.whitelist()
 	def migrate(self):
-		#self._migrate()
+		# self._migrate()
 		frappe.enqueue_doc("Xero Journals Migrator", "Xero Journals Migrator", "_migrate", queue="long")
 
 	def _migrate(self):
@@ -207,7 +207,7 @@ class XeroJournalsMigrator(Document):
 				self._save_entries(entity, results)
 			else:				
 				response = self._get(query_uri)
-				#self._save_entries(entity, content)
+				# self._save_entries(entity, content)
 				if response.status_code == 200:
 					response_json = response.json()
 
@@ -235,7 +235,9 @@ class XeroJournalsMigrator(Document):
 			json_str = json.dumps(content_array, sort_keys=True)
 			sha256_hash = hashlib.sha256(json_str.encode()).hexdigest()
 			
-			if not frappe.db.exists({"doctype": "Migrator Data", "sha256_hash": sha256_hash, "company": self.company}):
+			if not frappe.db.exists(
+				{"doctype": "Migrator Data", "sha256_hash": sha256_hash, "company": self.company}
+			):
 				migrator_data = {
 					"doctype": "Migrator Data",
 					"xero_id": xero_id,
@@ -243,10 +245,10 @@ class XeroJournalsMigrator(Document):
 					"company": self.company,
 					"sha256_hash": sha256_hash,
 				}
-				
+
 				page = kwargs["page"]
 				offset = kwargs["offset"]
-				
+
 				title = f"{entity} - {date_generated}"
 				migrator_data["title"] = title
 
@@ -265,7 +267,7 @@ class XeroJournalsMigrator(Document):
 				frappe.get_doc(migrator_data).insert()
 		except Exception as e:
 			self._log_error(e)
-	
+
 	def query_with_pagination(self, entity):
 		pluralized_entity_name = "{}s".format(entity)
 		query_uri = "{}/{}".format(
@@ -295,7 +297,7 @@ class XeroJournalsMigrator(Document):
 
 							self._save_json_data(
 								json_content=response_json, entity=pluralized_entity_name, page=current_page, offset=""
-							)	
+							)
 			return entries
 		except Exception as e:
 			self._log_error(e)
@@ -318,7 +320,7 @@ class XeroJournalsMigrator(Document):
 			if response.status_code == 200:
 				response_json = response.json()
 				if pluralized_entity_name in response_json and len(response_json[pluralized_entity_name]) != 0:
-					results = response_json[pluralized_entity_name]	
+					results = response_json[pluralized_entity_name]
 					for result in results:
 						offset_values.append(result[offsetter])
 
@@ -326,11 +328,11 @@ class XeroJournalsMigrator(Document):
 					last_offset_values.append(last_offset_value)
 					last_offset_value_string = f"{last_offset_value}"
 					self._save_json_data(
-						json_content=response_json, 
-						entity=pluralized_entity_name, 
-						page="", 
+						json_content=response_json,
+						entity=pluralized_entity_name,
+						page="",
 						offset=last_offset_value_string)
-					
+
 				if offset_values:						
 					entries.extend(results)
 								
@@ -353,9 +355,9 @@ class XeroJournalsMigrator(Document):
 									last_offset_values.append(next_page)
 									last_offset_value_string = f"{next_page}"
 									self._save_json_data(
-										json_content=response_json, 
-										entity=pluralized_entity_name, 
-										page="", 
+										json_content=response_json,
+										entity=pluralized_entity_name,
+										page="",
 										offset=last_offset_value_string
 									)
 
@@ -434,7 +436,7 @@ class XeroJournalsMigrator(Document):
 				"Xero-tenant-id": self.xero_tenant_id,
 			}
 
-			response = requests.get(*args, **kwargs)	
+			response = requests.get(*args, **kwargs)
 
 			# HTTP Status code 401 here means that the access_token is expired
 			# We can refresh tokens and retry
@@ -442,7 +444,7 @@ class XeroJournalsMigrator(Document):
 			if response.status_code == 401:
 				self._refresh_tokens()
 				response = self._get(*args, **kwargs)
-			
+
 			return response
 		except requests.exceptions.HTTPError as err:
 			print(f"HTTP Error: {err}")
@@ -463,7 +465,7 @@ class XeroJournalsMigrator(Document):
 		self.access_token = token["access_token"]
 		self.refresh_token = token["refresh_token"]
 		self.save()
-	
+
 	def _refresh_tokens(self):
 		token = self.oauth.refresh_token(
 			token_url=self.token_endpoint,
@@ -484,7 +486,7 @@ class XeroJournalsMigrator(Document):
 			}
 
 			query_uri = "https://api.xero.com/connections"
-			#response = self._get(query_uri)
+			# response = self._get(query_uri)
 			response = requests.get(query_uri, **kwargs)
 
 			response_string = response.json()
@@ -492,7 +494,7 @@ class XeroJournalsMigrator(Document):
 			return response_string
 		except Exception as e:
 			self._log_error(e, response.text)
-	
+
 	def _log_error(self, execption, data=""):
 		frappe.log_error(
 			title="Xero Migration Error",
@@ -508,9 +510,9 @@ class XeroJournalsMigrator(Document):
 
 	def _save_entries(self, entity, entries):
 		entity_method_map = {
-			"Account": self._save_account, #EN: Account
-			"TaxRate": self._save_tax_rate, #EN: Sales and Purchase Tax
-			"Journal": self._save_journal, #EN: Journal Entry: Xero-added transactions
+			"Account": self._save_account, # EN: Account
+			"TaxRate": self._save_tax_rate, # EN: Sales and Purchase Tax
+			"Journal": self._save_journal, # EN: Journal Entry: Xero-added transactions
 		}
 		total = len(entries)
 		for index, entry in enumerate(entries, start=1):
@@ -532,7 +534,7 @@ class XeroJournalsMigrator(Document):
 			"EQUITY": "Equity",
 			"EXPENSE": "Expense",
 			"LIABILITY": "Liability",
-			"REVENUE": "Income"
+			"REVENUE": "Income",
 		}
 		
 		try:
@@ -553,7 +555,7 @@ class XeroJournalsMigrator(Document):
 					"account_type": self._get_account_type(account),
 					"company": self.company,
 					"parent_account": parent_account,
-					"is_group": 0
+					"is_group": 0,
 				}
 
 				if account_type == "BANK":
@@ -581,7 +583,7 @@ class XeroJournalsMigrator(Document):
 					"parent_account": encode_company_abbr("{} - Xero".format("Liability"), self.company),
 					"is_group": "0",
 					"company": self.company,
-					}
+				}
 				frappe.get_doc(tax_rate_dict).insert()
 
 		except Exception as e:
@@ -591,7 +593,7 @@ class XeroJournalsMigrator(Document):
 		# Journal is equivalent to a Xero-added journal entry
 		accounts = []
 		descriptions = []
-		
+
 		def _get_je_accounts(lines):
 			# Converts JounalEntry lines to accounts list
 			posting_type_field_mapping = {
@@ -610,15 +612,14 @@ class XeroJournalsMigrator(Document):
 				net_amount = line["NetAmount"]
 				tax_amount = line["TaxAmount"]
 
-				if tax_amount == 0: # no need to get absolute value yet if the amount is being compared to 0
+				if tax_amount == 0:  # no need to get absolute value yet if the amount is being compared to 0
 					amount = net_amount
 				else:
 					if line["TaxType"] != "NONE":
 						amount = net_amount
 
-				account_name = self._get_account_name_by_code(
-					line["AccountCode"]
-				)
+				account_name = self._get_account_name_by_code(line["AccountCode"])
+
 
 				# In Xero, the use of (+) and (-) signs only signify the placement of the amount (debit or credit column)
 				# In ERPNext, amount will be saved as absolute values
@@ -636,11 +637,11 @@ class XeroJournalsMigrator(Document):
 				)
 
 			return accounts
-			
+
 		xero_id = "Journal Entry - {}".format(journal["JournalID"])
 		accounts = _get_je_accounts(journal["JournalLines"])
 		posting_date = self.json_date_parser(journal["JournalDate"])
-		
+
 		self.__save_journal_entry(xero_id, accounts, descriptions, posting_date)
 
 	def __save_journal_entry(self, xero_id, accounts, descriptions, posting_date):
@@ -656,7 +657,7 @@ class XeroJournalsMigrator(Document):
 					"accounts": accounts,
 					"multi_currency": 1,
 				}
-				
+
 				if len(descriptions) != 0:
 					title = descriptions[0][:140]
 					user_remark = ",".join(descriptions)
@@ -667,7 +668,9 @@ class XeroJournalsMigrator(Document):
 				je.submit()
 
 		except Exception as e:
-			self._log_error(e,)
+			self._log_error(
+				e,
+			)
 
 	def _publish(self, *args, **kwargs):
 		frappe.publish_realtime("xero_progress_update", *args, **kwargs, user=self.modified_by)
@@ -676,7 +679,7 @@ class XeroJournalsMigrator(Document):
 		return frappe.get_all(
 			"Account", filters={"account_number": account_code, "company": self.company}
 		)[0]["name"]
-	
+
 	def _get_unique_account_name(self, xero_name, number=0):
 		if number:
 			xero_account_name = "{} - {} - Xero".format(xero_name, number)
@@ -690,14 +693,14 @@ class XeroJournalsMigrator(Document):
 		else:
 			unique_account_name = xero_account_name
 		return unique_account_name
-		
+
 	def _get_account_type(self, account):
 		account_type = account["Type"]
 
 		# Xero SystemAccountattribute Value: Xero Default Account Name
 		xero_system_account_mapping = {
 			"CREDITORS": "Accounts Payable",
-			"DEBTORS":  "Accounts Receivable",
+			"DEBTORS": "Accounts Receivable",
 		}
 
 		# If Account Name is a General term, use the
@@ -709,7 +712,7 @@ class XeroJournalsMigrator(Document):
 			"Cost of Goods Sold": "Cost of Goods Sold",
 			"Depreciation": "Depreciation",
 			"Accounts Receivable": "Receivable",
-			"Accounts Payable": "Payable"
+			"Accounts Payable": "Payable",
 		}
 
 		# Xero Account Type: ERPNext Account Type
@@ -730,7 +733,7 @@ class XeroJournalsMigrator(Document):
 			"REVENUE": "Income Account",
 			"SALES": "Sales",
 			"TERMLIAB": "Non-current Liability",
-			"NONCURRENT": "Non-current Asset"
+			"NONCURRENT": "Non-current Asset",
 		}
 
 		xero_account_name = account["Name"]
@@ -746,7 +749,7 @@ class XeroJournalsMigrator(Document):
 		return account_type
 	
 	def json_date_parser(self, json_date):
-		match = re.search(r'\((\d+)\+(\d+)\)', json_date)
+		match = re.search(r"\((\d+)\+(\d+)\)", json_date)
 
 		if match:
 			numeric_part = match.group(1)
@@ -761,5 +764,4 @@ class XeroJournalsMigrator(Document):
 			date_object = date_object - timedelta(minutes=timezone_offset)
 
 			formatted_date = date_object.strftime("%Y-%m-%d")
-
 			return formatted_date

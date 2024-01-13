@@ -11,9 +11,6 @@
 # # 		).insert()
 
 
-
-
-
 # # # done
 
 # # def _get_account_name_by_id(self, xero_id):
@@ -204,13 +201,12 @@
 # # 					asset_dict["is_fully_depreciated"] = 1
 # # 				else:
 # # 					asset_dict["calculate_depreciation"] = 1
-# # 					asset_dict["finance_books"] = finance_books
-			
+# # 					asset_dict["finance_books"] = finance_books			
 # # 			frappe.get_doc().insert(asset_dict)
 
 # # 	except Exception as e:
 # # 		self._log_error(e, asset)
-	
+
 # # def _get_asset_item(self, asset):
 # # 	try:
 # # 		if not frappe.db.exists(
@@ -241,7 +237,6 @@
 # # # 		"Authorization": "Bearer {}".format(self.access_token),
 # # # 		"Xero-tenant-id": self.xero_tenant_id
 # # # 	}
-
 # # # 	response = requests.get(*args, **kwargs)
 # # # 	# HTTP Status code 401 here means that the access_token is expired
 # # # 	# We can refresh tokens and retry
@@ -249,7 +244,7 @@
 # # # 	# if response.status_code == 401:
 # # # 	# 	self._refresh_tokens()
 # # # 	# 	response = self._get(*args, **kwargs)
-	
+
 # # # 	return response
 
 # # def _get(self, *args, **kwargs):
@@ -321,7 +316,7 @@
 # # 		).insert()
 			
 # # def process_bank_transaction(self, bank_transaction):
-# # 	# check bank_account_transaction.py: do we need to clear the payment_entries when the 
+# # 	# check bank_account_transaction.py: do we need to clear the payment_entries when thes
 # # 	# transaction has been reconciled?
 # # 	status_mapping = {
 # # 		"PAID": "Settled",
@@ -363,13 +358,13 @@
 # # # Retrieve sales invoices or purchase bills 
 # # # Saving an Invoice as Sales or Purchase automatically designates the amounts to the correct column
 # # def _save_invoice(self, invoice):
-# # 	invoice_type = invoice["Type"]	
+# # 	invoice_type = invoice["Type"]
 
 # # 	# A bill – commonly known as an Accounts Payable or supplier invoice
 # # 	if invoice_type == "ACCPAY":
 # # 		xero_id = "Purchase Invoice - {}".format(invoice["InvoiceID"])
 # # 		self._save_purchase_invoice(invoice, xero_id)
-	
+
 # # 	# A sales invoice – commonly known as an Accounts Receivable or customer invoice
 # # 	elif invoice_type == "ACCREC":
 # # 		xero_id = "Sales Invoice - {}".format(invoice["InvoiceID"])
@@ -420,7 +415,7 @@
 # # 			for line_item in invoice["LineItems"]:
 # # 				item = self._get_si_item(line_item)
 # # 				items.append(item)
-				
+
 # # 				if invoice["LineAmountTypes"] == "Inclusive":
 # # 					tax = self._get_tax(line_item)
 # # 					taxes.append(tax)
@@ -432,7 +427,7 @@
 
 # # 			if "TotalTax" in invoice:
 # # 				invoice_dict["total_taxes_and_charges"]: invoice["TotalTax"]
-				
+
 # # 			invoice_doc = frappe.get_doc(invoice_dict)
 # # 			invoice_doc.insert()
 # # 			invoice_doc.submit()
@@ -491,7 +486,7 @@
 # # 		)
 # # 	if is_return:
 # # 		items[-1]["qty"] *= -1
-	
+
 # # 	return items
 
 # # def _save_purchase_invoice(self, invoice, xero_id, is_return=False):
@@ -504,7 +499,7 @@
 # # 		items = []
 # # 		payments = []
 # # 		taxes = []
-		
+
 # # 		invoice_number = invoice["InvoiceNumber"]
 # # 		if not frappe.db.exists(
 # # 			{"doctype": "Purchase Invoice", "xero_id": xero_id, "company": self.company}
@@ -588,7 +583,7 @@
 # # 				"amount": amount,
 # # 			}
 # # 		]
-	
+
 # # def _get_purchase_invoice_payment(self, line_item, is_return=False, is_paid=False):
 # # 	if is_paid:
 # # 		amount = line_item["LineAmount"]
@@ -612,7 +607,7 @@
 # # 		}
 
 # # 		accounts = []
-		
+
 # # 		for line in lines:
 # # 			line_amount_abs_value = abs(line["LineAmount"])
 # # 			account_name = self._get_account_name_by_code(
@@ -784,16 +779,16 @@
 # # 				"items": invoice["items"],
 # # 				"taxes": invoice["taxes"],
 # # 				"payments": self._get_sales_invoice_payment(line_item, is_return=is_return, is_pos=True)
-# # 			}			
+# # 			}
 
-# # 			invoice_doc = frappe.get_doc(invoice_dict)	
+# # 			invoice_doc = frappe.get_doc(invoice_dict)
 # # 			invoice_doc.insert()
 # # 			invoice_doc.submit()
 			
 # # 	except Exception as e:
 # # 		self._log_error(e, payment)
 
-# # def _save_purchase_invoice_payment(self, invoice_id, payment):		
+# # def _save_purchase_invoice_payment(self, invoice_id, payment):
 # # 	if frappe.db.exists(
 # # 		{"doctype": "Purchase Invoice", "xero_id": invoice_id, "company": self.company}
 # # 	):
@@ -842,9 +837,9 @@
 # # 				"items": invoice["items"],
 # # 				"taxes": invoice["taxes"],
 # # 				"payments": self._get_purchase_invoice_payment(line_item, is_return=is_return, is_paid=True)
-# # 			}			
-			
-# # 			invoice_doc = frappe.get_doc(invoice_dict)	
+# # 			}
+
+# # 			invoice_doc = frappe.get_doc(invoice_dict)
 # # 			invoice_doc.insert()
 # # 			invoice_doc.submit()
 
@@ -868,7 +863,7 @@
 
 # # 		payments = []
 
-# # 		for allocation in credit_note["Allocations"]:	
+# # 		for allocation in credit_note["Allocations"]:
 # # 			sales_invoice = frappe.get_all(
 # # 				"Sales Invoice",
 # # 				filters={
@@ -909,10 +904,10 @@
 # # 			is_paid=True
 # # 		else:
 # # 			is_paid=False
-		
+
 # # 		payments = []
 
-# # 		for allocation in credit_note["Allocations"]:	
+# # 		for allocation in credit_note["Allocations"]:
 # # 			purchase_invoice = frappe.get_all(
 # # 				"Purchase Invoice",
 # # 				filters={
@@ -986,7 +981,7 @@
 # 		):
 # 			frappe.get_doc({
 # 				"doctype": "Bank",
-# 				"bank_name": bank,	
+# 				"bank_name": bank,
 # 			}).insert()
 # 	except Exception as e:
 # 		self._log_error(e, bank)
@@ -1016,4 +1011,3 @@
 # 	except ValueError:
 # 		# If parsing fails, the string does not match the specified format
 # 		pass
-

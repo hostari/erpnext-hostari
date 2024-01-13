@@ -52,7 +52,7 @@ frappe.ui.form.on("Xero Journals Migrator", {
 					frm.trigger("fetch_data")
 				});
 			}
-		}        
+		}
 	},
     set_indicator: function(frm) {
 		var indicator_map = {
