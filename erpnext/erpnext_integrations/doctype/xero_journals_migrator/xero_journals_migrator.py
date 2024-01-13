@@ -446,11 +446,12 @@ class XeroJournalsMigrator(Document):
 
 			return response
 		except requests.exceptions.HTTPError as err:
-			print(f"HTTP Error: {err}")
+			frappe.msgprint(f"HTTP Error: {err}")
 		except requests.exceptions.RequestException as err:
-			print(f"An error occurred: {err}")
+			frappe.msgprint(f"An error occurred: {err}")
 		except Exception as err:
 			print(f"Unexpected error: {err}")
+			frappe.msgprint(f"Unexpected error: {err}")
 
 	def set_indicator(self, status):
 		self.status = status
