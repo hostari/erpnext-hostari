@@ -334,7 +334,7 @@ class XeroJournalsMigrator(Document):
 					)
 				if offset_values:
 					entries.extend(results)
-								
+
 					while last_offset_values:
 						current_page = last_offset_values.pop(0)
 

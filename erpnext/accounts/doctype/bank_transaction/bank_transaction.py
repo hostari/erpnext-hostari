@@ -417,11 +417,11 @@ def unclear_reference_payment(doctype, docname, bt_name):
 	return docname
 
 
-def remove_from_bank_transaction(doctype, docname):
+def remove_from_bank_transaction(self, doctype, docname):
 	"""Remove a (cancelled) voucher from all Bank Transactions."""
 	for bt_name in get_reconciled_bank_transactions(doctype, docname):
 		bt = frappe.get_doc("Bank Transaction", bt_name)
-		if bt.docstatus == DocStatus.cancelled():
+		if bt.docstatus == self.doc.docstatus.is_cancelled():
 			continue
 
 		modified = False

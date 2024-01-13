@@ -9,8 +9,7 @@ frappe.ui.form.on("Xero Journals Migrator", {
 		window.open(frm.doc.authorization_url)
 	},
     fetch_data: function(frm) {
-		response = frm.call("migrate")
-        console.log(response)
+		frm.call("migrate")
 	},
     onload: function(frm) {
         frm.trigger("set_indicator")
