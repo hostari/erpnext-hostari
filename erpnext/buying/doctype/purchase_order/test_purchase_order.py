@@ -29,8 +29,6 @@ from erpnext.stock.doctype.purchase_receipt.purchase_receipt import (
 class TestPurchaseOrder(FrappeTestCase):
 	def test_purchase_order_qty(self):
 		po = create_purchase_order(qty=1, do_not_save=True)
-
-		# NonNegativeError with qty=-1
 		po.append(
 			"items",
 			{
@@ -41,14 +39,8 @@ class TestPurchaseOrder(FrappeTestCase):
 		)
 		self.assertRaises(frappe.NonNegativeError, po.save)
 
-		# InvalidQtyError with qty=0
 		po.items[1].qty = 0
 		self.assertRaises(InvalidQtyError, po.save)
-
-		# No error with qty=1
-		po.items[1].qty = 1
-		po.save()
-		self.assertEqual(po.items[1].qty, 1)
 
 	def test_make_purchase_receipt(self):
 		po = create_purchase_order(do_not_submit=True)

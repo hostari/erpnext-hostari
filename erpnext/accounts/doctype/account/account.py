@@ -34,7 +34,39 @@ class Account(NestedSet):
 		account_currency: DF.Link | None
 		account_name: DF.Data
 		account_number: DF.Data | None
-		account_type: DF.Literal["", "Accumulated Depreciation", "Asset Received But Not Billed", "Bank", "Cash", "Chargeable", "Capital Work in Progress", "Cost of Goods Sold", "Current Asset", "Current Liability", "Depreciation", "Direct Expense", "Direct Costs", "Direct Income", "Equity", "Expense", "Expense Account", "Expenses Included In Asset Valuation", "Expenses Included In Valuation", "Fixed Asset", "Income Account", "Indirect Expense", "Indirect Income", "Inventory", "Liability", "Other Income", "Overheads", "Payable", "Receivable", "Revenue", "Round Off", "Sales", "Stock", "Stock Adjustment", "Stock Received But Not Billed", "Service Received But Not Billed", "Tax", "Temporary", "Non-current Asset", "Non-current Liability", "Prepayment", "Interest Income"]
+		account_type: DF.Literal[
+			"",
+			"Accumulated Depreciation",
+			"Asset Received But Not Billed",
+			"Bank",
+			"Cash",
+			"Chargeable",
+			"Capital Work in Progress",
+			"Cost of Goods Sold",
+			"Current Asset",
+			"Current Liability",
+			"Depreciation",
+			"Direct Expense",
+			"Direct Income",
+			"Equity",
+			"Expense Account",
+			"Expenses Included In Asset Valuation",
+			"Expenses Included In Valuation",
+			"Fixed Asset",
+			"Income Account",
+			"Indirect Expense",
+			"Indirect Income",
+			"Liability",
+			"Payable",
+			"Receivable",
+			"Round Off",
+			"Stock",
+			"Stock Adjustment",
+			"Stock Received But Not Billed",
+			"Service Received But Not Billed",
+			"Tax",
+			"Temporary",
+		]
 		balance_must_be: DF.Literal["", "Debit", "Credit"]
 		company: DF.Link
 		disabled: DF.Check

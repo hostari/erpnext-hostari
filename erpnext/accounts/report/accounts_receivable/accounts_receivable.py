@@ -123,7 +123,7 @@ class ReceivablePayableReport(object):
 			else:
 				key = (ple.account, ple.voucher_type, ple.voucher_no, ple.party)
 
-			if key not in self.voucher_balance:
+			if not key in self.voucher_balance:
 				self.voucher_balance[key] = frappe._dict(
 					voucher_type=ple.voucher_type,
 					voucher_no=ple.voucher_no,

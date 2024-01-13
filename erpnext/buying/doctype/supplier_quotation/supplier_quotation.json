@@ -860,8 +860,8 @@
    "print_hide": 1
   },
   {
-   "fieldname": "column_break_zjaq",
-   "fieldtype": "Column Break"
+    "fieldname": "column_break_zjaq",
+    "fieldtype": "Column Break"
   },
   {
    "fieldname": "shipping_address_display",
@@ -928,7 +928,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2023-11-17 12:34:30.083077",
+ "modified": "2023-11-20 11:15:30.083077",
  "modified_by": "Administrator",
  "module": "Buying",
  "name": "Supplier Quotation",

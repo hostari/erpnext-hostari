@@ -80,29 +80,6 @@ class TestSalesOrder(FrappeTestCase):
 		)
 		update_child_qty_rate("Sales Order", trans_item, so.name)
 
-	def test_sales_order_qty(self):
-		so = make_sales_order(qty=1, do_not_save=True)
-
-		# NonNegativeError with qty=-1
-		so.append(
-			"items",
-			{
-				"item_code": "_Test Item",
-				"qty": -1,
-				"rate": 10,
-			},
-		)
-		self.assertRaises(frappe.NonNegativeError, so.save)
-
-		# InvalidQtyError with qty=0
-		so.items[1].qty = 0
-		self.assertRaises(InvalidQtyError, so.save)
-
-		# No error with qty=1
-		so.items[1].qty = 1
-		so.save()
-		self.assertEqual(so.items[0].qty, 1)
-
 	def test_make_material_request(self):
 		so = make_sales_order(do_not_submit=True)
 

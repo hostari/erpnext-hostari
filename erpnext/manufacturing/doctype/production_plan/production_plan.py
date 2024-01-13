@@ -599,7 +599,7 @@ class ProductionPlan(Document):
 		if close is not None:
 			self.db_set("status", self.status)
 
-		if update_bin and self.docstatus == 1 and self.status != "Completed":
+		if self.docstatus == 1 and self.status != "Completed":
 			self.update_bin_qty()
 
 	def update_ordered_status(self):

@@ -556,7 +556,7 @@
    "table_fieldname": "payment_entries"
   }
  ],
- "modified": "2023-12-10 09:33:44.869017",
+ "modified": "2023-11-23 12:11:04.128015",
  "modified_by": "Administrator",
  "module": "Accounts",
  "name": "Journal Entry",

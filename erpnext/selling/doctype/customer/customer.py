@@ -15,6 +15,7 @@ from frappe.model.mapper import get_mapped_doc
 from frappe.model.naming import set_name_by_naming_series, set_name_from_naming_options
 from frappe.model.utils.rename_doc import update_linked_doctypes
 from frappe.utils import cint, cstr, flt, get_formatted_email, today
+from frappe.utils.deprecations import deprecated
 from frappe.utils.user import get_users_with_role
 
 from erpnext.accounts.party import get_dashboard_info, validate_party_accounts  # noqa
@@ -369,6 +370,24 @@ class Customer(TransactionBase):
 					frappe.bold(self.customer_name)
 				)
 			)
+
+
+@deprecated
+def create_contact(contact, party_type, party, email):
+	"""Create contact based on given contact name"""
+	first, middle, last = parse_full_name(contact)
+	doc = frappe.get_doc(
+		{
+			"doctype": "Contact",
+			"first_name": first,
+			"middle_name": middle,
+			"last_name": last,
+			"is_primary_contact": 1,
+		}
+	)
+	doc.append("email_ids", dict(email_id=email, is_primary=1))
+	doc.append("links", dict(link_doctype=party_type, link_name=party))
+	return doc.insert()
 
 
 @frappe.whitelist()

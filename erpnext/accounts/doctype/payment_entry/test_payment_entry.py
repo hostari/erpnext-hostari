@@ -1251,45 +1251,6 @@ class TestPaymentEntry(FrappeTestCase):
 		so.reload()
 		self.assertEqual(so.advance_paid, so.rounded_total)
 
-	def test_outstanding_invoices_api(self):
-		"""
-		Test if `get_outstanding_reference_documents` fetches invoices in the right order.
-		"""
-		customer = create_customer("Max Mustermann", "INR")
-		create_payment_terms_template()
-
-		# SI has an earlier due date and SI2 has a later due date
-		si = create_sales_invoice(
-			qty=1, rate=100, customer=customer, posting_date=add_days(nowdate(), -4)
-		)
-		si2 = create_sales_invoice(do_not_save=1, qty=1, rate=100, customer=customer)
-		si2.payment_terms_template = "Test Receivable Template"
-		si2.submit()
-
-		args = {
-			"posting_date": nowdate(),
-			"company": "_Test Company",
-			"party_type": "Customer",
-			"payment_type": "Pay",
-			"party": customer,
-			"party_account": "Debtors - _TC",
-		}
-		args.update(
-			{
-				"get_outstanding_invoices": True,
-				"from_posting_date": add_days(nowdate(), -4),
-				"to_posting_date": add_days(nowdate(), 2),
-			}
-		)
-		references = get_outstanding_reference_documents(args)
-
-		self.assertEqual(len(references), 3)
-		self.assertEqual(references[0].voucher_no, si.name)
-		self.assertEqual(references[1].voucher_no, si2.name)
-		self.assertEqual(references[2].voucher_no, si2.name)
-		self.assertEqual(references[1].payment_term, "Basic Amount Receivable")
-		self.assertEqual(references[2].payment_term, "Tax Receivable")
-
 	def test_receive_payment_from_payable_party_type(self):
 		"""
 		Checks GL entries generated while receiving payments from a Payable Party Type.
@@ -1510,6 +1471,45 @@ class TestPaymentEntry(FrappeTestCase):
 		for row in range(len(self.expected_gle)):
 			for field in ["account", "debit", "credit"]:
 				self.assertEqual(self.expected_gle[row][field], gl_entries[row][field])
+
+	def test_outstanding_invoices_api(self):
+		"""
+		Test if `get_outstanding_reference_documents` fetches invoices in the right order.
+		"""
+		customer = create_customer("Max Mustermann", "INR")
+		create_payment_terms_template()
+
+		# SI has an earlier due date and SI2 has a later due date
+		si = create_sales_invoice(
+			qty=1, rate=100, customer=customer, posting_date=add_days(nowdate(), -4)
+		)
+		si2 = create_sales_invoice(do_not_save=1, qty=1, rate=100, customer=customer)
+		si2.payment_terms_template = "Test Receivable Template"
+		si2.submit()
+
+		args = {
+			"posting_date": nowdate(),
+			"company": "_Test Company",
+			"party_type": "Customer",
+			"payment_type": "Pay",
+			"party": customer,
+			"party_account": "Debtors - _TC",
+		}
+		args.update(
+			{
+				"get_outstanding_invoices": True,
+				"from_posting_date": add_days(nowdate(), -4),
+				"to_posting_date": add_days(nowdate(), 2),
+			}
+		)
+		references = get_outstanding_reference_documents(args)
+
+		self.assertEqual(len(references), 3)
+		self.assertEqual(references[0].voucher_no, si.name)
+		self.assertEqual(references[1].voucher_no, si2.name)
+		self.assertEqual(references[2].voucher_no, si2.name)
+		self.assertEqual(references[1].payment_term, "Basic Amount Receivable")
+		self.assertEqual(references[2].payment_term, "Tax Receivable")
 
 
 def create_payment_entry(**args):

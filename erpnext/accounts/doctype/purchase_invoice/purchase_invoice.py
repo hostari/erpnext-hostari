@@ -1141,7 +1141,6 @@ class PurchaseInvoice(BuyingController):
 							self.get_gl_dict(
 								{
 									"account": stock_rbnb,
-									"against_type": "Supplier",
 									"against": self.supplier,
 									"against_link": self.supplier,
 									"debit": flt(item.item_tax_amount, item.precision("item_tax_amount")),

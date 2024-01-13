@@ -302,7 +302,7 @@
             "4660 Ertr\u00e4ge aus der Zuschreibung zum Anlageverm\u00f6gen, ausgen. Finanzanlagen": {"account_type": "Income Account"},
             "4700 Ertr\u00e4ge aus der Aufl\u00f6sung von R\u00fcckstellungen": {"account_type": "Income Account"},
             "4800 \u00dcbrige betriebliche Ertr\u00e4ge": {"account_type": "Income Account"},
-            "root_type": "Revenue"
+            "root_type": "Income"
         },
         "Klasse 5: Aufwand f\u00fcr Material und Leistungen": {
             "5000 Einkauf Partnerleistungen": {"account_type": "Cost of Goods Sold"},
@@ -407,7 +407,7 @@
             "8120 Buchwert abgegangener sonstiger Finanzanlagen": {"account_type": "Expense Account"},
             "8990 Gewinnabfuhr bzw. Verlust\u00fcberrechnung aus Ergebnisabf\u00fchrungsvertr\u00e4gen": {"account_type": "Expense Account"},
             "8350 nicht ausgenutzte Lieferantenskonti": {"account_type": "Expense Account"},
-            "root_type": "Revenue"
+            "root_type": "Income"
         },
         "Klasse 9 Passiva: Eigenkapital, R\u00fccklagen, stille Einlagen, Abschlusskonten": {
             "9000 Gezeichnetes bzw. gewidmetes Kapital": {

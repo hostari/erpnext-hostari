@@ -341,7 +341,10 @@ class AssetDepreciationSchedule(Document):
 				n == 0
 				and (has_pro_rata or has_wdv_or_dd_non_yearly_pro_rata)
 				and not self.opening_accumulated_depreciation
-				and not self.flags.wdv_it_act_applied
+				and get_updated_rate_of_depreciation_for_wdv_and_dd(
+					asset_doc, value_after_depreciation, row, False
+				)
+				== row.rate_of_depreciation
 			):
 				from_date = add_days(
 					asset_doc.available_for_use_date, -1
@@ -604,6 +607,13 @@ def get_depreciation_amount(
 		)
 
 
+@erpnext.allow_regional
+def get_updated_rate_of_depreciation_for_wdv_and_dd(
+	asset, depreciable_value, fb_row, show_msg=True
+):
+	return fb_row.rate_of_depreciation
+
+
 def get_straight_line_or_manual_depr_amount(
 	asset_depr_schedule, asset, row, schedule_idx, number_of_pending_depreciations
 ):
@@ -739,7 +749,6 @@ def get_asset_shift_factors_map():
 	return dict(frappe.db.get_all("Asset Shift Factor", ["shift_name", "shift_factor"], as_list=True))
 
 
-@erpnext.allow_regional
 def get_wdv_or_dd_depr_amount(
 	asset,
 	fb_row,
