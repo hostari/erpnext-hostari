@@ -44,7 +44,7 @@ class XeroJournalsMigrator(Document):
 		)
 		if not self.authorization_url and self.authorization_endpoint:
 			self.authorization_url = self.oauth.authorization_url(self.authorization_endpoint)[0]
-	
+
 	def on_update(self):
 		if self.company:
 			# We need a Cost Center corresponding to the selected erpnext Company
@@ -56,7 +56,6 @@ class XeroJournalsMigrator(Document):
 				self.default_warehouse = company_warehouses[0].name
 		if self.authorization_endpoint:
 			self.authorization_url = self.oauth.authorization_url(self.authorization_endpoint)[0]
-
 
 	@frappe.whitelist()
 	def migrate(self):
@@ -181,7 +180,7 @@ class XeroJournalsMigrator(Document):
 			query_uri = "{}/{}".format(
 				self.api_endpoint,
 				pluralized_entity_name,
-			)	
+			)
 			# Count number of entries
 			# fetch pages and accumulate
 			entities_for_pagination = {
@@ -205,7 +204,7 @@ class XeroJournalsMigrator(Document):
 			elif entities_for_pagination[entity] == False and entities_for_offset[entity] == True:
 				results = self._query_with_offset(entity, offsetter[entity])
 				self._save_entries(entity, results)
-			else:				
+			else:
 				response = self._get(query_uri)
 				# self._save_entries(entity, content)
 				if response.status_code == 200:
@@ -217,7 +216,7 @@ class XeroJournalsMigrator(Document):
 						if len(results) != 0:
 							self._save_json_data(
 								json_content=response_json, entity=pluralized_entity_name, page="", offset=""
-							)	
+							)
 							self._save_entries(entity, results)
 		except Exception as e:
 			self._log_error(e)
@@ -227,14 +226,14 @@ class XeroJournalsMigrator(Document):
 			date_generated = datetime.now().date()
 			page = kwargs["page"]
 			entity = kwargs["entity"]
-			
+
 			offset = kwargs["offset"]
 			xero_id = kwargs["json_content"]["Id"]
 			content = kwargs["json_content"]
 			content_array = content[entity]
 			json_str = json.dumps(content_array, sort_keys=True)
 			sha256_hash = hashlib.sha256(json_str.encode()).hexdigest()
-			
+
 			if not frappe.db.exists(
 				{"doctype": "Migrator Data", "sha256_hash": sha256_hash, "company": self.company}
 			):
@@ -331,9 +330,9 @@ class XeroJournalsMigrator(Document):
 						json_content=response_json,
 						entity=pluralized_entity_name,
 						page="",
-						offset=last_offset_value_string)
-
-				if offset_values:						
+						offset=last_offset_value_string,
+					)
+				if offset_values:
 					entries.extend(results)
 								
 					while last_offset_values:
@@ -358,7 +357,7 @@ class XeroJournalsMigrator(Document):
 										json_content=response_json,
 										entity=pluralized_entity_name,
 										page="",
-										offset=last_offset_value_string
+										offset=last_offset_value_string,
 									)
 
 			return entries
@@ -510,9 +509,9 @@ class XeroJournalsMigrator(Document):
 
 	def _save_entries(self, entity, entries):
 		entity_method_map = {
-			"Account": self._save_account, # EN: Account
-			"TaxRate": self._save_tax_rate, # EN: Sales and Purchase Tax
-			"Journal": self._save_journal, # EN: Journal Entry: Xero-added transactions
+			"Account": self._save_account,  # EN: Account
+			"TaxRate": self._save_tax_rate,  # EN: Sales and Purchase Tax
+			"Journal": self._save_journal,  # EN: Journal Entry: Xero-added transactions
 		}
 		total = len(entries)
 		for index, entry in enumerate(entries, start=1):
@@ -526,7 +525,7 @@ class XeroJournalsMigrator(Document):
 			)
 			entity_method_map[entity](entry)
 		frappe.db.commit()
-	
+
 	def _save_account(self, account):
 		# Account Class in Xero
 		root_account_mapping = {
@@ -536,7 +535,7 @@ class XeroJournalsMigrator(Document):
 			"LIABILITY": "Liability",
 			"REVENUE": "Income",
 		}
-		
+
 		try:
 			account_type = account["Type"]
 			if not frappe.db.exists(
@@ -619,7 +618,6 @@ class XeroJournalsMigrator(Document):
 						amount = net_amount
 
 				account_name = self._get_account_name_by_code(line["AccountCode"])
-
 
 				# In Xero, the use of (+) and (-) signs only signify the placement of the amount (debit or credit column)
 				# In ERPNext, amount will be saved as absolute values
@@ -747,7 +745,7 @@ class XeroJournalsMigrator(Document):
 			else:
 				account_type = xero_account_type_mapping[xero_account_type]
 		return account_type
-	
+
 	def json_date_parser(self, json_date):
 		match = re.search(r"\((\d+)\+(\d+)\)", json_date)
 

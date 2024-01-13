@@ -201,7 +201,7 @@
 # # 					asset_dict["is_fully_depreciated"] = 1
 # # 				else:
 # # 					asset_dict["calculate_depreciation"] = 1
-# # 					asset_dict["finance_books"] = finance_books			
+# # 					asset_dict["finance_books"] = finance_books
 # # 			frappe.get_doc().insert(asset_dict)
 
 # # 	except Exception as e:
@@ -255,7 +255,7 @@
 # # 			"Xero-tenant-id": self.xero_tenant_id
 # # 		}
 
-# # 		response = requests.get(*args, **kwargs)	
+# # 		response = requests.get(*args, **kwargs)
 # # 		# response = requests.get(*args, **kwargs)
 # # 		# HTTP Status code 401 here means that the access_token is expired
 # # 		# We can refresh tokens and retry
@@ -263,7 +263,7 @@
 # # 		if response.status_code == 401:
 # # 			self._refresh_tokens()
 # # 			response = self._get(*args, **kwargs)
-		
+
 # # 		return response
 # # 	except requests.exceptions.HTTPError as err:
 # # 		print(f"HTTP Error: {err}")
@@ -314,7 +314,7 @@
 
 # # 			}
 # # 		).insert()
-			
+
 # # def process_bank_transaction(self, bank_transaction):
 # # 	# check bank_account_transaction.py: do we need to clear the payment_entries when thes
 # # 	# transaction has been reconciled?
@@ -355,7 +355,7 @@
 # # 		bank_transaction_dict
 # # 	).insert()
 
-# # # Retrieve sales invoices or purchase bills 
+# # # Retrieve sales invoices or purchase bills
 # # # Saving an Invoice as Sales or Purchase automatically designates the amounts to the correct column
 # # def _save_invoice(self, invoice):
 # # 	invoice_type = invoice["Type"]
@@ -784,7 +784,7 @@
 # # 			invoice_doc = frappe.get_doc(invoice_dict)
 # # 			invoice_doc.insert()
 # # 			invoice_doc.submit()
-			
+
 # # 	except Exception as e:
 # # 		self._log_error(e, payment)
 
@@ -958,7 +958,6 @@
 # # 			)[0]
 # # 		else:
 # # 			bank = self._create_bank(account["Name"])
-	
 
 # # 		if not frappe.db.exists(
 # # 			{"doctype": "Bank Account", "xero_id": account["AccountID"], "company": self.company}
@@ -970,10 +969,10 @@
 # 				"account_type": account["BankAccountType"],
 # 				"bank_account_no": account["BankAccountNumber"],
 # 			}).insert()
-			
+
 # 	except Exception as e:
 # 		self._log_error(e, account)
-		
+
 # def _create_bank(self, bank):
 # 	try:
 # 		if not frappe.db.exists(
@@ -1010,4 +1009,5 @@
 
 # 	except ValueError:
 # 		# If parsing fails, the string does not match the specified format
+
 # 		pass
