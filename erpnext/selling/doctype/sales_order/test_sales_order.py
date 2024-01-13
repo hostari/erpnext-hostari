@@ -9,7 +9,7 @@ from frappe.core.doctype.user_permission.test_user_permission import create_user
 from frappe.tests.utils import FrappeTestCase, change_settings
 from frappe.utils import add_days, flt, getdate, nowdate, today
 
-from erpnext.controllers.accounts_controller import update_child_qty_rate
+from erpnext.controllers.accounts_controller import InvalidQtyError, update_child_qty_rate
 from erpnext.maintenance.doctype.maintenance_schedule.test_maintenance_schedule import (
 	make_maintenance_schedule,
 )
@@ -35,8 +35,8 @@ class TestSalesOrder(FrappeTestCase):
 	def setUpClass(cls):
 		super().setUpClass()
 		cls.unlink_setting = int(
-			frappe.db.get_value(
-				"Accounts Settings", "Accounts Settings", "unlink_advance_payment_on_cancelation_of_order"
+			frappe.db.get_single_value(
+				"Accounts Settings", "unlink_advance_payment_on_cancelation_of_order"
 			)
 		)
 
@@ -2015,7 +2015,7 @@ def make_sales_order(**args):
 			{
 				"item_code": args.item or args.item_code or "_Test Item",
 				"warehouse": args.warehouse,
-				"qty": args.qty or 10,
+				"qty": args.qty if args.qty is not None else 10,
 				"uom": args.uom or None,
 				"price_list_rate": args.price_list_rate or None,
 				"discount_percentage": args.discount_percentage or None,

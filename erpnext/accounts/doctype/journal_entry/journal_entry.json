@@ -76,7 +76,6 @@
    "allow_on_submit": 1,
    "fieldname": "title",
    "fieldtype": "Data",
-   "hidden": 1,
    "label": "Title",
    "no_copy": 1,
    "print_hide": 1

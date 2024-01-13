@@ -398,6 +398,7 @@ def initialize_gle_map(gl_entries, filters):
 	group_by = group_by_field(filters.get("group_by"))
 
 	for gle in gl_entries:
+		gle.against = gle.get("against_link") or gle.get("against")
 		gle_map.setdefault(gle.get(group_by), _dict(totals=get_totals_dict(), entries=[]))
 	return gle_map
 

@@ -19,6 +19,7 @@
   "is_advance",
   "section_break_5",
   "difference_amount",
+  "gain_loss_posting_date",
   "column_break_7",
   "difference_account",
   "exchange_rate",
@@ -151,6 +152,11 @@
    "fieldtype": "Link",
    "label": "Cost Center",
    "options": "Cost Center"
+  },
+  {
+   "fieldname": "gain_loss_posting_date",
+   "fieldtype": "Date",
+   "label": "Difference Posting Date"
   }
  ],
  "is_virtual": 1,

@@ -41,7 +41,7 @@ def make_gl_entries(
 					from_repost=from_repost,
 				)
 				save_entries(gl_map, adv_adj, update_outstanding, from_repost)
-			# Post GL Map proccess there may no be any GL Entries
+			# Post GL Map process there may no be any GL Entries
 			elif gl_map:
 				frappe.throw(
 					_(
@@ -280,6 +280,7 @@ def check_if_in_list(gle, gl_map, dimensions=None):
 		"project",
 		"finance_book",
 		"voucher_no",
+		"against_link",
 	]
 
 	if dimensions:
@@ -653,10 +654,10 @@ def check_freezing_date(posting_date, adv_adj=False):
 	Hence stop admin to bypass if accounts are freezed
 	"""
 	if not adv_adj:
-		acc_frozen_upto = frappe.db.get_value("Accounts Settings", None, "acc_frozen_upto")
+		acc_frozen_upto = frappe.db.get_single_value("Accounts Settings", "acc_frozen_upto")
 		if acc_frozen_upto:
-			frozen_accounts_modifier = frappe.db.get_value(
-				"Accounts Settings", None, "frozen_accounts_modifier"
+			frozen_accounts_modifier = frappe.db.get_single_value(
+				"Accounts Settings", "frozen_accounts_modifier"
 			)
 			if getdate(posting_date) <= getdate(acc_frozen_upto) and (
 				frozen_accounts_modifier not in frappe.get_roles() or frappe.session.user == "Administrator"

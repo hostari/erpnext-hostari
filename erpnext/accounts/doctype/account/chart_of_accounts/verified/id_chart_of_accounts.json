@@ -681,7 +681,7 @@
                 "account_number": "4100.000"
             }, 
             "account_number": "4000.000", 
-            "root_type": "Income"
+            "root_type": "Revenue"
         }
     }
 }

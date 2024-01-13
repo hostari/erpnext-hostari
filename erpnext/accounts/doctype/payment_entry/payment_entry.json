@@ -223,6 +223,7 @@
    "fieldname": "party_balance",
    "fieldtype": "Currency",
    "label": "Party Balance",
+   "no_copy": 1,
    "print_hide": 1,
    "read_only": 1
   },

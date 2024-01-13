@@ -302,7 +302,7 @@ class PurchaseReceipt(BuyingController):
 			)
 
 	def po_required(self):
-		if frappe.db.get_value("Buying Settings", None, "po_required") == "Yes":
+		if frappe.db.get_single_value("Buying Settings", "po_required") == "Yes":
 			for d in self.get("items"):
 				if not d.purchase_order:
 					frappe.throw(_("Purchase Order number required for Item {0}").format(d.item_code))
@@ -828,16 +828,17 @@ class PurchaseReceipt(BuyingController):
 						)
 						amount_including_divisional_loss -= applicable_amount
 
-					self.add_gl_entry(
-						gl_entries=gl_entries,
-						account=account,
-						cost_center=tax.cost_center,
-						debit=0.0,
-						credit=applicable_amount,
-						remarks=self.remarks or _("Accounting Entry for Stock"),
-						against_account=against_account,
-						item=tax,
-					)
+					for against in self.against_accounts:
+						self.add_gl_entry(
+							gl_entries=gl_entries,
+							account=account,
+							cost_center=tax.cost_center,
+							debit=0.0,
+							credit=flt(applicable_amount) / len(self.against_accounts),
+							remarks=self.remarks or _("Accounting Entry for Stock"),
+							against_account=against,
+							item=tax,
+						)
 
 					i += 1
 
@@ -1228,6 +1229,7 @@ def make_purchase_invoice(source_name, target_doc=None, args=None):
 				"field_map": {
 					"name": "pr_detail",
 					"parent": "purchase_receipt",
+					"qty": "received_qty",
 					"purchase_order_item": "po_detail",
 					"purchase_order": "purchase_order",
 					"is_fixed_asset": "is_fixed_asset",

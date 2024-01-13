@@ -135,7 +135,7 @@
                 "Ventas Tasa M\u00ednima": {},
                 "Ventas por Exportaciones": {}
             },
-            "root_type": "Income"
+            "root_type": "Revenue"
         },
         "ORDEN ACTIVO": {
             "Acciones a Emitir": {},

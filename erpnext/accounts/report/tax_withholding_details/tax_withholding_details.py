@@ -69,7 +69,7 @@ def get_result(
 				tax_amount += entry.credit - entry.debit
 
 			if net_total_map.get(name):
-				if voucher_type == "Journal Entry":
+				if voucher_type == "Journal Entry" and tax_amount and rate:
 					# back calcalute total amount from rate and tax_amount
 					if rate:
 						total_amount = grand_total = base_total = tax_amount / (rate / 100)
@@ -154,7 +154,7 @@ def get_gle_map(documents):
 	)
 
 	for d in gle:
-		if not d.voucher_no in gle_map:
+		if d.voucher_no not in gle_map:
 			gle_map[d.voucher_no] = [d]
 		else:
 			gle_map[d.voucher_no].append(d)

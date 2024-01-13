@@ -23,7 +23,7 @@ from erpnext.assets.doctype.asset.test_asset import create_asset, create_asset_d
 from erpnext.assets.doctype.asset_depreciation_schedule.asset_depreciation_schedule import (
 	get_depr_schedule,
 )
-from erpnext.controllers.accounts_controller import update_invoice_status
+from erpnext.controllers.accounts_controller import InvalidQtyError, update_invoice_status
 from erpnext.controllers.taxes_and_totals import get_itemised_tax_breakup_data
 from erpnext.exceptions import InvalidAccountCurrency, InvalidCurrency
 from erpnext.selling.doctype.customer.test_customer import get_customer_dict
@@ -71,6 +71,16 @@ class TestSalesInvoice(FrappeTestCase):
 	@classmethod
 	def tearDownClass(self):
 		unlink_payment_on_cancel_of_invoice(0)
+
+	def test_sales_invoice_qty(self):
+		si = create_sales_invoice(qty=0, do_not_save=True)
+		with self.assertRaises(InvalidQtyError):
+			si.save()
+
+		# No error with qty=1
+		si.items[0].qty = 1
+		si.save()
+		self.assertEqual(si.items[0].qty, 1)
 
 	def test_timestamp_change(self):
 		w = frappe.copy_doc(test_records[0])
@@ -2521,12 +2531,6 @@ class TestSalesInvoice(FrappeTestCase):
 			"stock_received_but_not_billed",
 			"Stock Received But Not Billed - _TC1",
 		)
-		frappe.db.set_value(
-			"Company",
-			"_Test Company 1",
-			"expenses_included_in_valuation",
-			"Expenses Included In Valuation - _TC1",
-		)
 
 		# begin test
 		si = create_sales_invoice(
@@ -3359,7 +3363,9 @@ class TestSalesInvoice(FrappeTestCase):
 		batch_no = get_batch_from_bundle(si.items[0].serial_and_batch_bundle)
 		self.assertTrue(batch_no)
 
-		frappe.db.set_value("Batch", batch_no, "expiry_date", add_days(today(), -1))
+		frappe.db.set_value(
+			"Batch", self.test_sales_invoice_with_payable_tax_account, "expiry_date", add_days(today(), -1)
+		)
 
 		return_si = make_return_doc(si.doctype, si.name)
 		return_si.save().submit()
@@ -3642,7 +3648,7 @@ def create_sales_invoice(**args):
 	bundle_id = None
 	if si.update_stock and (args.get("batch_no") or args.get("serial_no")):
 		batches = {}
-		qty = args.qty or 1
+		qty = args.qty if args.qty is not None else 1
 		item_code = args.item or args.item_code or "_Test Item"
 		if args.get("batch_no"):
 			batches = frappe._dict({args.batch_no: qty})
@@ -3674,7 +3680,7 @@ def create_sales_invoice(**args):
 			"description": args.description or "_Test Item",
 			"warehouse": args.warehouse or "_Test Warehouse - _TC",
 			"target_warehouse": args.target_warehouse,
-			"qty": args.qty or 1,
+			"qty": args.qty if args.qty is not None else 1,
 			"uom": args.uom or "Nos",
 			"stock_uom": args.uom or "Nos",
 			"rate": args.rate if args.get("rate") is not None else 100,

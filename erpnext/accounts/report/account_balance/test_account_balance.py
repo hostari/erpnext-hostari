@@ -15,7 +15,7 @@ class TestAccountBalance(unittest.TestCase):
 		filters = {
 			"company": "_Test Company 2",
 			"report_date": getdate(),
-			"root_type": "Income",
+			"root_type": "Revenue",
 		}
 
 		make_sales_invoice()

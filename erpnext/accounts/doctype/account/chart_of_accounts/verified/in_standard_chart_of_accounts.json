@@ -127,7 +127,7 @@
                 "account_type": "Income Account",
                 "is_group": 1
             },
-            "root_type": "Income"
+            "root_type": "Revenue"
         },
         "Source of Funds (Liabilities)": {
             "Capital Account": {

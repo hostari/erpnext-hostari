@@ -232,7 +232,7 @@ class StockEntry(StockController):
 		self.calculate_rate_and_amount()
 		self.validate_putaway_capacity()
 
-		if not self.get("purpose") == "Manufacture":
+		if self.get("purpose") != "Manufacture":
 			# ignore scrap item wh difference and empty source/target wh
 			# in Manufacture Entry
 			self.reset_default_field_value("from_warehouse", "items", "s_warehouse")
@@ -395,9 +395,8 @@ class StockEntry(StockController):
 				frappe.delete_doc("Stock Entry", d.name)
 
 	def set_transfer_qty(self):
+		self.validate_qty_is_not_zero()
 		for item in self.get("items"):
-			if not flt(item.qty):
-				frappe.throw(_("Row {0}: Qty is mandatory").format(item.idx), title=_("Zero quantity"))
 			if not flt(item.conversion_factor):
 				frappe.throw(_("Row {0}: UOM Conversion Factor is mandatory").format(item.idx))
 			item.transfer_qty = flt(
@@ -521,31 +520,37 @@ class StockEntry(StockController):
 								item_code.append(item.item_code)
 
 	def validate_fg_completed_qty(self):
-		item_wise_qty = {}
-		if self.purpose == "Manufacture" and self.work_order:
-			for d in self.items:
-				if d.is_finished_item:
-					if self.process_loss_qty:
-						d.qty = self.fg_completed_qty - self.process_loss_qty
+		if self.purpose != "Manufacture":
+			return
 
-					item_wise_qty.setdefault(d.item_code, []).append(d.qty)
+		fg_qty = defaultdict(float)
+		for d in self.items:
+			if d.is_finished_item:
+				fg_qty[d.item_code] += flt(d.qty)
+
+		if not fg_qty:
+			return
 
 		precision = frappe.get_precision("Stock Entry Detail", "qty")
-		for item_code, qty_list in item_wise_qty.items():
-			total = flt(sum(qty_list), precision)
+		fg_item = list(fg_qty.keys())[0]
+		fg_item_qty = flt(fg_qty[fg_item], precision)
+		fg_completed_qty = flt(self.fg_completed_qty, precision)
 
-			if (self.fg_completed_qty - total) > 0 and not self.process_loss_qty:
-				self.process_loss_qty = flt(self.fg_completed_qty - total, precision)
-				self.process_loss_percentage = flt(self.process_loss_qty * 100 / self.fg_completed_qty)
+		for d in self.items:
+			if not fg_qty.get(d.item_code):
+				continue
 
-			if self.process_loss_qty:
-				total += flt(self.process_loss_qty, precision)
+			if (fg_completed_qty - fg_item_qty) > 0:
+				self.process_loss_qty = fg_completed_qty - fg_item_qty
 
-			if self.fg_completed_qty != total:
+			if not self.process_loss_qty:
+				continue
+
+			if fg_completed_qty != (flt(fg_item_qty) + flt(self.process_loss_qty, precision)):
 				frappe.throw(
-					_("The finished product {0} quantity {1} and For Quantity {2} cannot be different").format(
-						frappe.bold(item_code), frappe.bold(total), frappe.bold(self.fg_completed_qty)
-					)
+					_(
+						"Since there is a process loss of {0} units for the finished good {1}, you should reduce the quantity by {0} units for the finished good {1} in the Items Table."
+					).format(frappe.bold(self.process_loss_qty), frappe.bold(d.item_code))
 				)
 
 	def validate_difference_account(self):
@@ -1454,7 +1459,9 @@ class StockEntry(StockController):
 						self.get_gl_dict(
 							{
 								"account": account,
+								"against_type": "Account",
 								"against": d.expense_account,
+								"against_link": d.expense_account,
 								"cost_center": d.cost_center,
 								"remarks": self.get("remarks") or _("Accounting Entry for Stock"),
 								"credit_in_account_currency": flt(amount["amount"]),
@@ -1468,7 +1475,9 @@ class StockEntry(StockController):
 						self.get_gl_dict(
 							{
 								"account": d.expense_account,
+								"against_type": "Account",
 								"against": account,
+								"against_link": account,
 								"cost_center": d.cost_center,
 								"remarks": self.get("remarks") or _("Accounting Entry for Stock"),
 								"credit": -1

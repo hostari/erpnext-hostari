@@ -1266,12 +1266,12 @@ def get_children(parent=None, is_root=False, **filters):
 def add_additional_cost(stock_entry, work_order):
 	# Add non stock items cost in the additional cost
 	stock_entry.additional_costs = []
-	expenses_included_in_valuation = frappe.get_cached_value(
-		"Company", work_order.company, "expenses_included_in_valuation"
+	default_expense_account = frappe.get_cached_value(
+		"Company", work_order.company, "default_expense_account"
 	)
 
-	add_non_stock_items_cost(stock_entry, work_order, expenses_included_in_valuation)
-	add_operations_cost(stock_entry, work_order, expenses_included_in_valuation)
+	add_non_stock_items_cost(stock_entry, work_order, default_expense_account)
+	add_operations_cost(stock_entry, work_order, default_expense_account)
 
 
 def add_non_stock_items_cost(stock_entry, work_order, expense_account):
@@ -1386,7 +1386,7 @@ def get_bom_diff(bom1, bom2):
 
 			# check for deletions
 			for d in old_value:
-				if not d.get(identifier) in new_row_by_identifier:
+				if d.get(identifier) not in new_row_by_identifier:
 					out.removed.append([df.fieldname, d.as_dict()])
 
 	return out
@@ -1402,13 +1402,18 @@ def item_query(doctype, txt, searchfield, start, page_len, filters):
 
 	fields = ["name", "item_name", "item_group", "description"]
 	fields.extend(
-		[field for field in searchfields if not field in ["name", "item_group", "description"]]
+		[field for field in searchfields if field not in ["name", "item_group", "description"]]
 	)
 
 	searchfields = searchfields + [
 		field
-		for field in [searchfield or "name", "item_code", "item_group", "item_name"]
-		if not field in searchfields
+		for field in [
+			searchfield or "name",
+			"item_code",
+			"item_group",
+			"item_name",
+		]
+		if field not in searchfields
 	]
 
 	query_filters = {"disabled": 0, "ifnull(end_of_life, '3099-12-31')": (">", today())}

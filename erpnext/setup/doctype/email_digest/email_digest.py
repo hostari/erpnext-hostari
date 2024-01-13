@@ -399,7 +399,7 @@ class EmailDigest(Document):
 		income_account = frappe.db.get_all(
 			"Account",
 			fields=["name"],
-			filters={"root_type": "Income", "parent_account": "", "company": self.company},
+			filters={"root_type": "Revenue", "parent_account": "", "company": self.company},
 		)
 
 		label = get_link_to_report(
@@ -689,7 +689,7 @@ class EmailDigest(Document):
 		]
 
 	def get_root_type_accounts(self, root_type):
-		if not root_type in self._accounts:
+		if root_type not in self._accounts:
 			self._accounts[root_type] = [
 				d.name
 				for d in frappe.db.get_all(

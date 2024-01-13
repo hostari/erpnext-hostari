@@ -415,3 +415,21 @@ def unclear_reference_payment(doctype, docname, bt_name):
 	bt = frappe.get_doc("Bank Transaction", bt_name)
 	set_voucher_clearance(doctype, docname, None, bt)
 	return docname
+
+
+def remove_from_bank_transaction(self, doctype, docname):
+	"""Remove a (cancelled) voucher from all Bank Transactions."""
+	for bt_name in get_reconciled_bank_transactions(doctype, docname):
+		bt = frappe.get_doc("Bank Transaction", bt_name)
+		if bt.docstatus == self.doc.docstatus.is_cancelled():
+			continue
+
+		modified = False
+
+		for pe in bt.payment_entries:
+			if pe.payment_document == doctype and pe.payment_entry == docname:
+				bt.remove(pe)
+				modified = True
+
+		if modified:
+			bt.save()

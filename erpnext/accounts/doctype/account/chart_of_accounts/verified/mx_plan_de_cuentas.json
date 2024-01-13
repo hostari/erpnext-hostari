@@ -412,7 +412,7 @@
                     }
                 }
             }, 
-            "root_type": "Income"
+            "root_type": "Revenue"
         }, 
         "OTROS INGRESOS (EGRESOS)": {
             "EGRESOS": {
@@ -455,7 +455,7 @@
                     }
                 }
             }, 
-            "root_type": "Income"
+            "root_type": "Revenue"
         }, 
         "PASIVO": {
             " Stock recibidas, pero no facturada": {
